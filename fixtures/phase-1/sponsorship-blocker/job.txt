@@ -1,0 +1,7 @@
+Backend Engineer
+
+Required Qualifications
+- TypeScript
+- PostgreSQL
+
+Candidates must be authorized to work in the US without sponsorship.

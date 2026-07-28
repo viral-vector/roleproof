@@ -1,0 +1,4 @@
+Riley Quinn
+Location: Denver, CO
+Skills: TypeScript, PostgreSQL
+Built fictional TypeScript services with PostgreSQL.

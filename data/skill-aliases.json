@@ -1,0 +1,150 @@
+{
+  "schemaVersion": "1.0",
+  "skills": [
+    {
+      "canonicalName": ".NET",
+      "category": "framework",
+      "aliases": [".NET Core"]
+    },
+    {
+      "canonicalName": "AKS",
+      "category": "infrastructure",
+      "aliases": ["Azure Kubernetes Service"]
+    },
+    {
+      "canonicalName": "ASP.NET",
+      "category": "framework",
+      "aliases": ["ASP.NET MVC"]
+    },
+    {
+      "canonicalName": "AWS",
+      "category": "infrastructure",
+      "aliases": ["Amazon Web Services"]
+    },
+    {
+      "canonicalName": "Backend development",
+      "category": "other",
+      "aliases": ["backend engineering", "backend experience", "server-side development"]
+    },
+    {
+      "canonicalName": "CI/CD",
+      "category": "infrastructure",
+      "aliases": ["GitLab CI", "continuous integration", "continuous delivery"]
+    },
+    {
+      "canonicalName": "Containerization",
+      "category": "infrastructure",
+      "aliases": ["containers"]
+    },
+    {
+      "canonicalName": "Docker",
+      "category": "infrastructure",
+      "aliases": []
+    },
+    {
+      "canonicalName": "Document database",
+      "category": "database",
+      "aliases": ["document DB"]
+    },
+    {
+      "canonicalName": "Express",
+      "category": "framework",
+      "aliases": ["Express.js"]
+    },
+    {
+      "canonicalName": "Go",
+      "category": "language",
+      "aliases": ["Golang"]
+    },
+    {
+      "canonicalName": "Graph database",
+      "category": "database",
+      "aliases": ["Graph DB"]
+    },
+    {
+      "canonicalName": "GraphQL",
+      "category": "other",
+      "aliases": []
+    },
+    {
+      "canonicalName": "JavaScript",
+      "category": "language",
+      "aliases": ["JS"]
+    },
+    {
+      "canonicalName": "K3s",
+      "category": "infrastructure",
+      "aliases": []
+    },
+    {
+      "canonicalName": "Kubernetes",
+      "category": "infrastructure",
+      "aliases": ["K8s"]
+    },
+    {
+      "canonicalName": "Laravel",
+      "category": "framework",
+      "aliases": []
+    },
+    {
+      "canonicalName": "MySQL",
+      "category": "database",
+      "aliases": []
+    },
+    {
+      "canonicalName": "Node.js",
+      "category": "framework",
+      "aliases": ["NodeJS"]
+    },
+    {
+      "canonicalName": "OAuth2",
+      "category": "other",
+      "aliases": ["OAuth 2", "OAuth 2.0"]
+    },
+    {
+      "canonicalName": "OpenID Connect",
+      "category": "other",
+      "aliases": ["OIDC"]
+    },
+    {
+      "canonicalName": "PHP",
+      "category": "language",
+      "aliases": []
+    },
+    {
+      "canonicalName": "PostgreSQL",
+      "category": "database",
+      "aliases": ["Postgres"]
+    },
+    {
+      "canonicalName": "Relational database",
+      "category": "database",
+      "aliases": ["relational DB", "RDBMS"]
+    },
+    {
+      "canonicalName": "REST API",
+      "category": "other",
+      "aliases": ["RESTful API", "REST APIs", "RESTful APIs"]
+    },
+    {
+      "canonicalName": "SQL Server",
+      "category": "database",
+      "aliases": ["Microsoft SQL Server"]
+    },
+    {
+      "canonicalName": "SurrealDB",
+      "category": "database",
+      "aliases": []
+    },
+    {
+      "canonicalName": "Team leadership",
+      "category": "leadership",
+      "aliases": ["team lead", "led a team", "led an engineering team", "mentored engineers"]
+    },
+    {
+      "canonicalName": "TypeScript",
+      "category": "language",
+      "aliases": ["TS"]
+    }
+  ]
+}

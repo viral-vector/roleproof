@@ -1,0 +1,3 @@
+Skyler Chen
+Skills: TypeScript
+Built fictional TypeScript services as an individual contributor.

@@ -1,0 +1,3 @@
+Sam Bell
+Skills: TypeScript
+Built fictional TypeScript services.

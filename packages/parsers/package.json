@@ -19,6 +19,11 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
+    "prepack": "pnpm --dir ../.. build",
     "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@roleproof/shared": "workspace:*",
+    "unpdf": "1.8.0"
   }
 }

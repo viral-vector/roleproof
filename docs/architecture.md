@@ -1,32 +1,31 @@
 # Architecture
 
-## Phase 0 Boundary
+## Phase 1 Boundary
 
-Phase 0 provides package boundaries and public schemas but no job-fit analysis behavior. The
-implemented dependency direction is:
+Phase 1 provides local deterministic analysis without storage, providers, a server, or a web UI.
+The implemented dependency direction is:
 
 ```text
 apps/cli
-
-packages/core       packages/parsers       packages/reporters
-       \                    |                    /
-                    packages/shared
+  |--> packages/parsers ----|
+  |--> packages/core -------|--> packages/shared
+  |--> packages/reporters --|
 ```
 
 `packages/shared` is the canonical contract package. It owns strict Zod schemas and derives
 TypeScript types from those schemas. Other packages may depend on shared contracts; shared must
 not depend on application or behavior packages.
 
-The package shells do not import shared contracts until they have a current use case. This avoids
-creating speculative interfaces solely to demonstrate the intended dependency graph.
+Normalization data remains version controlled in root `data/` and is copied into the core package
+during builds so packaged analysis does not depend on the caller's working directory.
 
 ## Package Responsibilities
 
 ### CLI
 
-`apps/cli` owns command parsing, stream routing, and process exit behavior. It must orchestrate
-core behavior rather than implement analysis. Phase 0 supports only help, version, and invalid
-argument handling.
+`apps/cli` owns command parsing, stream routing, report-file writes, and process exit behavior. The
+`analyze` action delegates parsing, analysis, and rendering to their packages. It does not match or
+score evidence.
 
 ### Shared
 
@@ -44,23 +43,31 @@ Evidence match scores use the specification's canonical values: `direct` is `1`,
 `strongly-related` is `0.75`, `partially-related` is `0.4`, and all unsupported, unknown, or
 confirmation-required classifications are `0`. A supported match must reference evidence IDs.
 
-The specified CLI JSON envelope is `{ "schemaVersion": "1.0", "analysis": {} }`. Phase 0 does
-not produce this output; its implementation and compatibility tests begin in Phase 1.
+The CLI JSON envelope is `{ "schemaVersion": "1.0", "analysis": {} }`. JSON stdout contains this
+envelope only, including when a blocker produces exit code `10`.
 
 ### Core
 
-`packages/core` is reserved for deterministic analysis orchestration and truth rules. Analysis is
-introduced in Phase 1.
+`packages/core` owns versioned normalization data, explicit evidence and requirement extraction,
+non-transitive matching, blockers, explainable scoring, recommendations, stable IDs, and
+deterministic orchestration. Requirement importance is resolved clause-by-clause, and eligibility
+blockers consume the resulting structured required requirements rather than independently guessing
+qualification headings. Repeated evidence and semantic requirements are deduplicated, match
+evidence references are bounded, and output ordering uses locale-independent comparison. Hard
+blockers remain separate from the numeric score.
 
 ### Parsers
 
-`packages/parsers` will extract untrusted document content without assigning unsupported career
-experience. Plaintext and PDF parsing are introduced in Phase 1.
+`packages/parsers` extracts bounded untrusted document content without assigning career evidence.
+It normalizes plaintext, extracts PDF text, rejects blank or binary-like input, and enforces byte,
+page, image, and timeout limits before or during extraction. PDF.js resources are released after
+completion and on timeout. Phase 1 accepts PDF resumes and plaintext jobs.
 
 ### Reporters
 
-`packages/reporters` will render validated `AnalysisResult` values without recalculating them. JSON
-and Markdown reporting are introduced in Phase 1.
+`packages/reporters` validates and renders `AnalysisResult` values without recalculating them. JSON
+uses the shared envelope schema; Markdown displays blockers, classifications, evidence IDs, and
+score contributions.
 
 ## Permanent Boundaries
 

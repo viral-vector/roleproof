@@ -136,7 +136,7 @@ Do not require PostgreSQL, Redis, graph databases, vector databases, or cloud in
 - **Package manager:** pnpm workspaces
 - **CLI:** Commander.js
 - **Local API:** Fastify
-- **Web UI:** React + Vite
+- **Web UI:** Vue + Vite
 - **Validation:** Zod
 - **Phase 2 storage:** SQLite using Drizzle ORM or Kysely
 - **Search:** SQLite FTS5
@@ -152,7 +152,7 @@ Future hosted deployment may add PostgreSQL and queues, but only in a later phas
 ```text
                     ┌──────────────────────┐
                     │ Local Web UI         │
-                    │ React + Vite         │
+                    │ Vue + Vite           │
                     └──────────┬───────────┘
                                │
                     ┌──────────▼───────────┐
@@ -210,7 +210,7 @@ roleproof/
 └── pnpm-workspace.yaml
 ```
 
-Keep all business logic outside CLI handlers and React components.
+Keep all business logic outside CLI handlers and Vue components.
 
 ---
 
@@ -935,7 +935,7 @@ This is the first résumé-worthy release.
 
 - `roleproof serve`
 - Fastify API
-- React/Vite UI
+- Vue/Vite UI
 - Upload résumé
 - Paste job description
 - Run analysis

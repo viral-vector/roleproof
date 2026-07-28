@@ -21,10 +21,10 @@
     "build": "pnpm --recursive --if-present run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "eslint .",
-    "test": "pnpm --filter @roleproof/cli build && vitest run",
-    "test:cli": "pnpm --filter @roleproof/cli build && vitest run apps/cli/test",
-    "typecheck": "tsc --project tsconfig.json --noEmit && pnpm --recursive --if-present run typecheck"
+    "lint": "pnpm build && eslint .",
+    "test": "pnpm build && vitest run",
+    "test:cli": "pnpm build && vitest run apps/cli/test",
+    "typecheck": "pnpm build && tsc --project tsconfig.json --noEmit && pnpm --recursive --if-present run typecheck"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

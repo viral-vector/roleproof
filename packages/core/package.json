@@ -12,13 +12,15 @@
     }
   },
   "files": [
+    "data",
     "dist"
   ],
   "engines": {
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
+    "build": "tsc --project tsconfig.build.json && node ../../scripts/sync-core-data.mjs",
+    "prepack": "pnpm --dir ../.. build",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -1,0 +1,4 @@
+Jordan Lee
+Skills: TypeScript, Node.js, PostgreSQL, Docker, AWS, OAuth2, REST API
+Built backend services and REST APIs with Node.js and PostgreSQL.
+Led an engineering team for a fictional platform.

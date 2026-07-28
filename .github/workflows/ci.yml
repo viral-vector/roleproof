@@ -61,3 +61,9 @@ jobs:
 
       - name: Smoke test CLI version
         run: pnpm exec roleproof --version
+
+      - name: Smoke test deterministic JSON analysis
+        run: pnpm exec roleproof analyze --resume fixtures/phase-1/strong-match/resume.txt --job fixtures/phase-1/strong-match/job.txt --no-ai --format json --stdout
+
+      - name: Smoke test deterministic Markdown analysis
+        run: pnpm exec roleproof analyze --resume fixtures/phase-1/strong-match/resume.txt --job fixtures/phase-1/strong-match/job.txt --no-ai --format markdown --stdout

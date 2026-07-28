@@ -1,0 +1,7 @@
+Backend Engineer
+
+Required Qualifications
+- TypeScript
+- PostgreSQL
+
+Salary: USD 80000-100000 annually.

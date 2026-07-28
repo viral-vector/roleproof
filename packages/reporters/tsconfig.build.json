@@ -2,6 +2,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
+    "rootDir": "./src",
     "tsBuildInfoFile": "./node_modules/.cache/tsconfig.build.tsbuildinfo"
-  }
+  },
+  "exclude": ["test/**/*.ts"]
 }

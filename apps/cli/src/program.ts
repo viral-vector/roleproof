@@ -2,6 +2,9 @@ import { createRequire } from 'node:module';
 
 import { Command, CommanderError } from 'commander';
 
+import { registerAnalyzeCommand } from './commands/analyze.js';
+import { CliError } from './errors.js';
+
 interface PackageMetadata {
   version: string;
 }
@@ -11,10 +14,14 @@ export interface CliOutput {
   writeErr(message: string): void;
 }
 
+export interface CliState {
+  exitCode: number;
+}
+
 const require = createRequire(import.meta.url);
 const packageMetadata = require('../package.json') as PackageMetadata;
 
-export function createProgram(output: CliOutput): Command {
+export function createProgram(output: CliOutput, state: CliState = { exitCode: 0 }): Command {
   const program = new Command();
 
   program
@@ -34,15 +41,22 @@ export function createProgram(output: CliOutput): Command {
       throw new CommanderError(2, error.code, error.message);
     });
 
+  registerAnalyzeCommand(program, output, state);
+
   return program;
 }
 
 export async function runCli(args: string[], output: CliOutput): Promise<number> {
+  const state: CliState = { exitCode: 0 };
   try {
-    await createProgram(output).parseAsync(args, { from: 'user' });
-    return 0;
+    await createProgram(output, state).parseAsync(args, { from: 'user' });
+    return state.exitCode;
   } catch (error) {
     if (error instanceof CommanderError) {
+      return error.exitCode;
+    }
+    if (error instanceof CliError) {
+      output.writeErr(`roleproof: ${error.message}\n`);
       return error.exitCode;
     }
 

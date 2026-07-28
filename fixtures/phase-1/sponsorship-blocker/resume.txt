@@ -1,0 +1,4 @@
+Taylor Reed
+Work authorization: Requires sponsorship
+Skills: TypeScript, PostgreSQL
+Built fictional TypeScript services with PostgreSQL.

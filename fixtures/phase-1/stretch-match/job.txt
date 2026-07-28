@@ -1,0 +1,12 @@
+Platform Engineer
+
+Required Qualifications
+- Go
+- Kubernetes
+- PostgreSQL
+- GraphQL
+- OAuth2
+- Backend development
+
+Responsibilities
+- Team leadership

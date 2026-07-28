@@ -1,0 +1,4 @@
+Jamie Parker
+Clearance: Public Trust
+Skills: TypeScript, PostgreSQL
+Built fictional TypeScript services with PostgreSQL.

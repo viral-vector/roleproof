@@ -23,9 +23,15 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
+    "prepack": "pnpm --dir ../.. build",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
-    "commander": "14.0.3"
+    "@roleproof/core": "workspace:*",
+    "@roleproof/parsers": "workspace:*",
+    "@roleproof/reporters": "workspace:*",
+    "@roleproof/shared": "workspace:*",
+    "commander": "14.0.3",
+    "zod": "4.4.3"
   }
 }

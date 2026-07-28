@@ -172,10 +172,68 @@ export const SuggestionSchema = z
 
 export const RecommendationSchema = z.enum(['apply', 'stretch', 'skip', 'manual-review']);
 
+export const ScoringCategorySchema = z.enum([
+  'required-technical',
+  'responsibilities',
+  'seniority-leadership',
+  'domain',
+  'infrastructure-delivery',
+  'preferred',
+  'eligibility-logistics',
+]);
+
+export const ScoreContributionSchema = z
+  .object({
+    requirementId: idSchema,
+    scoringCategory: ScoringCategorySchema,
+    classification: MatchClassificationSchema,
+    evidenceIds: z.array(idSchema),
+    appliedWeight: z.number().finite().min(0).max(100),
+    pointsAwarded: z.number().finite().min(0).max(100),
+    explanation: nonBlankStringSchema,
+  })
+  .strict()
+  .superRefine((contribution, context) => {
+    if (contribution.pointsAwarded > contribution.appliedWeight) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Points awarded must not exceed the applied weight',
+        path: ['pointsAwarded'],
+      });
+    }
+
+    if (MATCH_VALUES[contribution.classification] > 0 && contribution.evidenceIds.length === 0) {
+      context.addIssue({
+        code: 'custom',
+        message: 'A supported score contribution must reference evidence',
+        path: ['evidenceIds'],
+      });
+    }
+
+    if (MATCH_VALUES[contribution.classification] === 0 && contribution.pointsAwarded !== 0) {
+      context.addIssue({
+        code: 'custom',
+        message: 'An unsupported score contribution cannot award points',
+        path: ['pointsAwarded'],
+      });
+    }
+  });
+
+export const AnalysisParsingMetadataSchema = z
+  .object({
+    resumeConfidence: unitIntervalSchema,
+    jobConfidence: unitIntervalSchema,
+    warnings: z.array(nonBlankStringSchema),
+  })
+  .strict();
+
 export const AnalysisMetadataSchema = z
   .object({
     mode: z.enum(['deterministic', 'ai-enhanced']),
     engineVersion: nonBlankStringSchema,
+    normalizationVersion: nonBlankStringSchema.optional(),
+    scoringVersion: nonBlankStringSchema.optional(),
+    parsing: AnalysisParsingMetadataSchema.optional(),
   })
   .strict();
 
@@ -198,6 +256,7 @@ export const AnalysisResultSchema = z
     interviewTopics: z.array(nonBlankStringSchema),
     generatedAt: nonBlankStringSchema,
     metadata: AnalysisMetadataSchema,
+    scoreContributions: z.array(ScoreContributionSchema).optional(),
   })
   .strict();
 
@@ -214,5 +273,8 @@ export type EvidenceMatch = z.infer<typeof EvidenceMatchSchema>;
 export type UnsupportedClaim = z.infer<typeof UnsupportedClaimSchema>;
 export type Suggestion = z.infer<typeof SuggestionSchema>;
 export type Recommendation = z.infer<typeof RecommendationSchema>;
+export type ScoringCategory = z.infer<typeof ScoringCategorySchema>;
+export type ScoreContribution = z.infer<typeof ScoreContributionSchema>;
+export type AnalysisParsingMetadata = z.infer<typeof AnalysisParsingMetadataSchema>;
 export type AnalysisMetadata = z.infer<typeof AnalysisMetadataSchema>;
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;

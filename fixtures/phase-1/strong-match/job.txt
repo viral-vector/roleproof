@@ -1,0 +1,11 @@
+Backend Engineer
+
+Required Qualifications
+- TypeScript
+- Node.js
+- PostgreSQL
+- OAuth2
+- REST API
+
+Responsibilities
+- Team leadership

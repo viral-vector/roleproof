@@ -38,9 +38,24 @@ importers:
 
   apps/cli:
     dependencies:
+      '@roleproof/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@roleproof/parsers':
+        specifier: workspace:*
+        version: link:../../packages/parsers
+      '@roleproof/reporters':
+        specifier: workspace:*
+        version: link:../../packages/reporters
+      '@roleproof/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       commander:
         specifier: 14.0.3
         version: 14.0.3
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/core:
     dependencies:
@@ -48,9 +63,20 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
-  packages/parsers: {}
+  packages/parsers:
+    dependencies:
+      '@roleproof/shared':
+        specifier: workspace:*
+        version: link:../shared
+      unpdf:
+        specifier: 1.8.0
+        version: 1.8.0
 
-  packages/reporters: {}
+  packages/reporters:
+    dependencies:
+      '@roleproof/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/shared:
     dependencies:
@@ -991,6 +1017,15 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
+  unpdf@1.8.0:
+    resolution: {integrity: sha512-jQlkckbe5nKxRHQdbvo9IKHlU6Cjq00UlxxB8lrCIxvS2o5IbAL1wM+4a1Yc3+BIohg9p5AsoaftwO+G4Aq/qQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@napi-rs/canvas': ^0.1.69 || ^1.0.0
+    peerDependenciesMeta:
+      '@napi-rs/canvas':
+        optional: true
+
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
 
@@ -1914,6 +1949,8 @@ snapshots:
   typescript@5.9.3: {}
 
   undici-types@6.21.0: {}
+
+  unpdf@1.8.0: {}
 
   uri-js@4.4.1:
     dependencies:

@@ -1,2 +1,2 @@
-// JSON and Markdown rendering are introduced in Phase 1.
-export {};
+export * from './json.js';
+export * from './markdown.js';

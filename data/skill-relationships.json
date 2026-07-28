@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "1.0",
+  "relationships": [
+    {
+      "source": "AKS",
+      "target": "Kubernetes",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "ASP.NET",
+      "target": ".NET",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "AWS",
+      "target": "Kubernetes",
+      "direction": "directed",
+      "classification": "partially-related"
+    },
+    {
+      "source": "Docker",
+      "target": "Containerization",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "Docker",
+      "target": "Kubernetes",
+      "direction": "directed",
+      "classification": "partially-related"
+    },
+    {
+      "source": "Express",
+      "target": "Backend development",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "K3s",
+      "target": "Kubernetes",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "Laravel",
+      "target": "Backend development",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "MySQL",
+      "target": "Relational database",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "Node.js",
+      "target": "Backend development",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "OAuth2",
+      "target": "OpenID Connect",
+      "direction": "bidirectional",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "PostgreSQL",
+      "target": "Relational database",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "REST API",
+      "target": "Backend development",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "SQL Server",
+      "target": "Relational database",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "SurrealDB",
+      "target": "Document database",
+      "direction": "directed",
+      "classification": "strongly-related"
+    },
+    {
+      "source": "SurrealDB",
+      "target": "Graph database",
+      "direction": "directed",
+      "classification": "strongly-related"
+    }
+  ]
+}

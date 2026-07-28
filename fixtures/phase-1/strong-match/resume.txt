@@ -1,0 +1,6 @@
+Avery Morgan
+Location: Remote
+Work authorization: Authorized without sponsorship
+Skills: TypeScript, Node.js, PostgreSQL, OAuth2, REST API
+2020-2026: Built TypeScript REST APIs with Node.js and PostgreSQL.
+Led an engineering team for a fictional product.

@@ -18,6 +18,7 @@ coverage/
 *.db-wal
 reports/
 output/
+packages/core/data/
 
 # Tool and operating-system files
 .cache/

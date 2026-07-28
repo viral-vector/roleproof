@@ -15,7 +15,7 @@ pnpm install
 
 ## Development Rules
 
-- Read `ROLEPROOF_BUILD_SPEC.md` and `AGENTS.md` before changing behavior.
+- Read `docs/ROLEPROOF_BUILD_SPEC.md` and `AGENTS.md` before changing behavior.
 - Work within one product phase at a time.
 - Keep business logic in domain packages, not CLI handlers or presentation components.
 - Define Zod boundary schemas before implementing consumers.

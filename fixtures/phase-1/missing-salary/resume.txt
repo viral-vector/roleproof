@@ -1,0 +1,3 @@
+Drew Harper
+Skills: TypeScript, PostgreSQL
+Built fictional TypeScript services with PostgreSQL.

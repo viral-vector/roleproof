@@ -8,7 +8,7 @@ RoleProof is a local-first, evidence-based job-fit analysis platform. Its core p
 
 The product build specification is the canonical feature and architecture reference:
 
-- [`ROLEPROOF_BUILD_SPEC.md`](./ROLEPROOF_BUILD_SPEC.md)
+- [`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md)
 
 This document defines **agent behavior and engineering guardrails**. It does not replace the build specification.
 
@@ -34,8 +34,8 @@ This document defines **agent behavior and engineering guardrails**. It does not
 Use this precedence order when instructions conflict:
 
 1. The user's explicit request
-2. `ROLEPROOF_AGENT_RULES.md`
-3. `ROLEPROOF_BUILD_SPEC.md`
+2. `AGENTS.md`
+3. `docs/ROLEPROOF_BUILD_SPEC.md`
 4. Public package interfaces and documented contracts
 5. Existing tests
 6. Existing implementation details
