@@ -1,0 +1,27 @@
+{
+  "name": "@roleproof/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "RoleProof core analysis contracts",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@roleproof/shared": "workspace:*"
+  }
+}

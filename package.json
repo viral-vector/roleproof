@@ -1,0 +1,39 @@
+{
+  "name": "roleproof",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local-first, evidence-based job-fit analysis",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "packageManager": "pnpm@10.24.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ],
+    "overrides": {
+      "vite": "6.4.3"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --recursive --if-present run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "pnpm --filter @roleproof/cli build && vitest run",
+    "test:cli": "pnpm --filter @roleproof/cli build && vitest run apps/cli/test",
+    "typecheck": "tsc --project tsconfig.json --noEmit && pnpm --recursive --if-present run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@roleproof/cli": "workspace:*",
+    "@types/node": "22.20.0",
+    "eslint": "9.39.5",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.55.0",
+    "vitest": "4.0.18"
+  }
+}

@@ -1,0 +1,25 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.log
+
+# RoleProof local data
+.roleproof/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+reports/
+output/
+
+# Tool and operating-system files
+.cache/
+.DS_Store
+Thumbs.db

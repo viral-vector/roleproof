@@ -1,0 +1,31 @@
+{
+  "name": "@roleproof/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "RoleProof command-line interface",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "roleproof": "./bin/roleproof.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/program.d.ts",
+      "default": "./dist/program.js"
+    }
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "commander": "14.0.3"
+  }
+}

@@ -1,0 +1,6 @@
+coverage
+dist
+node_modules
+pnpm-lock.yaml
+AGENTS.md
+ROLEPROOF_BUILD_SPEC.md
