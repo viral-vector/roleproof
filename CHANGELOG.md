@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-07-29
+
+RoleProof's local SQLite storage release for the deterministic CLI.
 
 ### Phase 2 Storage
 
@@ -11,8 +13,8 @@
   purge through `data purge --yes`.
 - Added explicit `--profile` analysis with profile-wide evidence. Inferred evidence remains
   confirmation-only and contributes zero points.
-- Added `--no-store` analysis without writes, including a read-only profile snapshot that rejects
-  live uncheckpointed WAL content.
+- Added `--no-store` analysis without analysis-content writes. Explicit profiles are opened
+  read-only and query-only so SQLite includes committed WAL content.
 - Added schema-versioned command JSON envelopes without changing the Analysis envelope version
   `1.0`.
 

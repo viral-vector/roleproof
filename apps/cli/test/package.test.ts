@@ -41,7 +41,7 @@ describe('@roleproof/cli package export', () => {
         version?: string;
       };
       expect(packageJson.scripts?.prepack, packagePath).toBe('pnpm --dir ../.. build');
-      expect(packageJson.version, packagePath).toBe('0.1.0');
+      expect(packageJson.version, packagePath).toBe('0.2.0');
       expect(packageJson.private, packagePath).toBe(false);
       expect(packageJson.publishConfig, packagePath).toEqual({ access: 'public' });
       expect(packageJson.engines?.node, packagePath).toBe('>=22.0.0 <25');
@@ -54,10 +54,11 @@ describe('@roleproof/cli package export', () => {
     }
   });
 
-  it('documents the v0.1.0 release without overstating product outcomes', () => {
+  it('documents the v0.2.0 release without overstating product outcomes', () => {
     const changelog = readFileSync('CHANGELOG.md', 'utf8');
 
-    expect(changelog).toContain('## 0.1.0 - 2026-07-28');
+    expect(changelog).toContain('## 0.2.0 - 2026-07-29');
+    expect(changelog).toContain('SQLite');
     expect(changelog).toContain('deterministic');
     expect(changelog).not.toMatch(/interview probability|hiring probability/iu);
   });

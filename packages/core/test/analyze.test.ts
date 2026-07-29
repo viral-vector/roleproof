@@ -86,6 +86,7 @@ describe('analyzeDeterministic', () => {
     expect(result.unsupportedClaims[0]?.classification).toBe('unsupported');
     expect(result.unsupportedClaims[0]?.evidenceIds).toEqual([]);
     expect(result.suggestedEmphasis.every((item) => item.evidenceIds.length > 0)).toBe(true);
+    expect(result.metadata.engineVersion).toBe('0.2.0');
   });
 
   it('is deterministic for identical inputs and does not mutate them', () => {

@@ -215,7 +215,7 @@ function analyzeValidated(
     generatedAt: options.generatedAt ?? new Date().toISOString(),
     metadata: {
       mode: 'deterministic',
-      engineVersion: '0.1.0',
+      engineVersion: '0.2.0',
       normalizationVersion: '1.0.0',
       scoringVersion: DEFAULT_SCORING_CONFIG.version,
       parsing: {
