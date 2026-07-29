@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
-import { extname } from 'node:path';
+import { basename, extname } from 'node:path';
 
 import { ParserConfigSchema, type ParsedDocument, type ParserConfig } from '@roleproof/shared';
 
@@ -8,11 +9,17 @@ import { ParserError } from './errors.js';
 import { parsePdf } from './pdf.js';
 import { parsePlaintext } from './plaintext.js';
 
-export async function parseDocumentFile(
+export interface ParsedDocumentFile {
+  document: ParsedDocument;
+  contentSha256: string;
+  originalName: string;
+}
+
+export async function parseDocumentFileWithMetadata(
   inputPath: string,
   kind: 'job' | 'resume',
   config: ParserConfig = DEFAULT_PARSER_CONFIG,
-): Promise<ParsedDocument> {
+): Promise<ParsedDocumentFile> {
   const isPdf = extname(inputPath).toLocaleLowerCase('en-US') === '.pdf';
   if (isPdf && kind === 'job') {
     throw new ParserError(
@@ -59,13 +66,26 @@ export async function parseDocumentFile(
   }
 
   try {
-    return isPdf
+    const document = isPdf
       ? await parsePdf(content, kind, validatedConfig)
       : parsePlaintext(content, kind, validatedConfig);
+    return {
+      document,
+      contentSha256: createHash('sha256').update(content).digest('hex'),
+      originalName: basename(inputPath),
+    };
   } catch (error) {
     if (error instanceof ParserError) {
       throw new ParserError(error.code, `${error.message} Input: ${inputPath}`, inputPath);
     }
     throw error;
   }
+}
+
+export async function parseDocumentFile(
+  inputPath: string,
+  kind: 'job' | 'resume',
+  config: ParserConfig = DEFAULT_PARSER_CONFIG,
+): Promise<ParsedDocument> {
+  return (await parseDocumentFileWithMetadata(inputPath, kind, config)).document;
 }

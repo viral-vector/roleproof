@@ -66,6 +66,20 @@ describe('extractCareerEvidence', () => {
     expect(leadership?.sourceText).toBe('Led an engineering team for a fictional product.');
   });
 
+  it('assigns extracted evidence to an explicitly supplied profile', () => {
+    const evidence = extractCareerEvidence(resume, DEFAULT_NORMALIZATION_DATA.aliases, {
+      profileId: 'profile-imported',
+    });
+
+    expect(evidence).not.toHaveLength(0);
+    expect(evidence.every((item) => item.profileId === 'profile-imported')).toBe(true);
+    expect(
+      extractCareerEvidence(resume, DEFAULT_NORMALIZATION_DATA.aliases).every(
+        (item) => item.profileId === 'profile-local',
+      ),
+    ).toBe(true);
+  });
+
   it('does not invent dates when a source line has none', () => {
     const evidence = extractCareerEvidence(resume, DEFAULT_NORMALIZATION_DATA.aliases);
     const docker = evidence.find(

@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { Command, CommanderError } from 'commander';
 
 import { registerAnalyzeCommand } from './commands/analyze.js';
+import { registerStorageCommands } from './commands/storage.js';
 import { CliError } from './errors.js';
 
 interface PackageMetadata {
@@ -28,6 +29,7 @@ export function createProgram(output: CliOutput, state: CliState = { exitCode: 0
     .name('roleproof')
     .description('Local-first, evidence-based job-fit analysis')
     .version(packageMetadata.version)
+    .option('--db <absolute-sqlite-path>', 'Absolute path to the RoleProof SQLite database')
     .showHelpAfterError('Run roleproof --help for usage.')
     .configureOutput({
       writeErr: (message) => output.writeErr(message),
@@ -42,6 +44,7 @@ export function createProgram(output: CliOutput, state: CliState = { exitCode: 0
     });
 
   registerAnalyzeCommand(program, output, state);
+  registerStorageCommands(program, output);
 
   return program;
 }

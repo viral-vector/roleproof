@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,7 +9,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   return { ...actual, readFile: vi.fn(actual.readFile) };
 });
 
-import { DEFAULT_PARSER_CONFIG, ParserError, parseDocumentFile } from '../src/index.js';
+import {
+  DEFAULT_PARSER_CONFIG,
+  ParserError,
+  parseDocumentFile,
+  parseDocumentFileWithMetadata,
+} from '../src/index.js';
 
 describe('parseDocumentFile', () => {
   let directory: string;
@@ -31,6 +36,16 @@ describe('parseDocumentFile', () => {
 
     expect(parsed.text).toBe('Skills: TypeScript');
     expect(parsed.format).toBe('plaintext');
+  });
+
+  it('delegates without changing its ParsedDocument output', async () => {
+    const path = join(directory, 'legacy-resume.txt');
+    await writeFile(path, 'Skills: TypeScript\r\n', 'utf8');
+
+    const parsed = await parseDocumentFile(path, 'resume');
+    const imported = await parseDocumentFileWithMetadata(path, 'resume');
+
+    expect(parsed).toEqual(imported.document);
   });
 
   it('reports the missing path without document contents', async () => {
@@ -81,6 +96,60 @@ describe('parseDocumentFile', () => {
         maxTextBytes: Number.NaN,
       }),
     ).rejects.toEqual(expect.objectContaining({ name: 'ZodError' }));
+    expect(readFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('parseDocumentFileWithMetadata', () => {
+  let directory: string;
+
+  beforeEach(async () => {
+    vi.mocked(readFile).mockClear();
+    directory = await mkdtemp(join(tmpdir(), 'roleproof parser metadata-'));
+  });
+
+  afterEach(async () => {
+    await rm(directory, { force: true, maxRetries: 3, recursive: true, retryDelay: 50 });
+  });
+
+  it('returns the exact source-byte SHA-256 and basename without retaining the source path', async () => {
+    const path = join(directory, 'private', 'fictional resume.txt');
+    await mkdir(join(directory, 'private'));
+    await writeFile(path, 'Skills: TypeScript\r\n', 'utf8');
+
+    const imported = await parseDocumentFileWithMetadata(path, 'resume');
+
+    expect(imported.document).toMatchObject({ text: 'Skills: TypeScript', format: 'plaintext' });
+    expect(imported.contentSha256).toBe(
+      'f8de07670ab30ad56eff58e48971ae289dfbd7671481033b6dcc7061b2313605',
+    );
+    expect(imported.originalName).toBe('fictional resume.txt');
+    expect(JSON.stringify(imported)).not.toContain(directory);
+    expect(readFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves bounded-read size and file-read errors', async () => {
+    const oversizedPath = join(directory, 'oversized.txt');
+    const missingPath = join(directory, 'missing.txt');
+    await writeFile(oversizedPath, 'Skills: TypeScript\n', 'utf8');
+
+    await expect(
+      parseDocumentFileWithMetadata(oversizedPath, 'resume', {
+        ...DEFAULT_PARSER_CONFIG,
+        maxTextBytes: 10,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<ParserError>>({
+        code: 'size-limit',
+        inputPath: oversizedPath,
+      }),
+    );
+    await expect(parseDocumentFileWithMetadata(missingPath, 'resume')).rejects.toEqual(
+      expect.objectContaining<Partial<ParserError>>({
+        code: 'file-read',
+        inputPath: missingPath,
+      }),
+    );
     expect(readFile).not.toHaveBeenCalled();
   });
 });

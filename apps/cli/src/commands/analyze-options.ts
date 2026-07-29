@@ -9,6 +9,7 @@ export const AnalyzeOptionsSchema = z
     stdout: z.boolean(),
     ai: z.boolean(),
     store: z.boolean(),
+    profile: z.string().min(1).optional(),
     targetSalaryMin: z.coerce.number().finite().nonnegative().optional(),
     targetSalaryMax: z.coerce.number().finite().nonnegative().optional(),
     location: z.string().min(1).optional(),

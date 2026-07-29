@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Phase 2 Storage
+
+- Added local SQLite persistence through Kysely and `better-sqlite3`, defaulting to
+  `~/.roleproof/roleproof.db`.
+- Added profile and career-evidence management, default analysis persistence, stored reports and
+  evidence-reference snapshots, analysis history, FTS5 search, and confirmed database/WAL/SHM
+  purge through `data purge --yes`.
+- Added explicit `--profile` analysis with profile-wide evidence. Inferred evidence remains
+  confirmation-only and contributes zero points.
+- Added `--no-store` analysis without writes, including a read-only profile snapshot that rejects
+  live uncheckpointed WAL content.
+- Added schema-versioned command JSON envelopes without changing the Analysis envelope version
+  `1.0`.
+
 ## 0.1.0 - 2026-07-28
 
 RoleProof's first deterministic CLI release.

@@ -93,6 +93,56 @@ describe('matchEvidence', () => {
     );
   });
 
+  it('requires confirmation for inferred same-name evidence without awarding points', () => {
+    const [match] = matchEvidence(
+      [requirements[0]!],
+      [{ ...evidence[0]!, id: 'evidence-inferred-typescript', confidence: 'inferred' }],
+      DEFAULT_NORMALIZATION_DATA.relationships,
+    );
+
+    expect(match).toEqual(
+      expect.objectContaining({
+        classification: 'requires-user-confirmation',
+        evidenceIds: ['evidence-inferred-typescript'],
+        score: 0,
+      }),
+    );
+  });
+
+  it('does not award points for inferred related evidence', () => {
+    const [match] = matchEvidence(
+      [requirements[1]!],
+      [{ ...evidence[1]!, id: 'evidence-inferred-docker', confidence: 'inferred' }],
+      DEFAULT_NORMALIZATION_DATA.relationships,
+    );
+
+    expect(match).toEqual(
+      expect.objectContaining({
+        classification: 'requires-user-confirmation',
+        evidenceIds: ['evidence-inferred-docker'],
+        score: 0,
+      }),
+    );
+  });
+
+  it.each(['explicit', 'user-confirmed'] as const)(
+    'keeps %s evidence eligible under existing direct and related rules',
+    (confidence) => {
+      const matches = matchEvidence(
+        [requirements[0]!, requirements[1]!],
+        evidence.map((item) => ({ ...item, confidence })),
+        DEFAULT_NORMALIZATION_DATA.relationships,
+      );
+
+      expect(matches.find((match) => match.requirementId === 'requirement-typescript')).toEqual(
+        expect.objectContaining({ classification: 'direct', score: 1 }),
+      );
+      expect(matches.find((match) => match.requirementId === 'requirement-kubernetes')).toEqual(
+        expect.objectContaining({ classification: 'partially-related', score: 0.4 }),
+      );
+    },
+  );
+
   it('downgrades an unverified years requirement without inventing duration', () => {
     const [match] = matchEvidence(
       [{ ...requirements[0]!, id: 'requirement-years', yearsRequested: 5 }],

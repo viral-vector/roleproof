@@ -248,11 +248,12 @@ export function matchEvidence(
         );
       }
 
-      const directEvidence = sortedEvidence
-        .filter((item) => {
-          const evidenceName = item.normalizedName ?? item.name;
-          return comparisonKey(evidenceName) === comparisonKey(requirementName);
-        })
+      const sameNameEvidence = sortedEvidence.filter((item) => {
+        const evidenceName = item.normalizedName ?? item.name;
+        return comparisonKey(evidenceName) === comparisonKey(requirementName);
+      });
+      const directEvidence = sameNameEvidence
+        .filter((item) => item.confidence !== 'inferred')
         .slice(0, MAX_EVIDENCE_REFERENCES_PER_MATCH);
       if (directEvidence.length > 0) {
         if (
@@ -270,11 +271,22 @@ export function matchEvidence(
           requirement,
           directEvidence.map((item) => item.id),
           'direct',
-          `The resume explicitly supports ${requirementName}.`,
+          `The supplied evidence explicitly supports ${requirementName}.`,
+        );
+      }
+      const inferredDirectEvidence = sameNameEvidence
+        .filter((item) => item.confidence === 'inferred')
+        .slice(0, MAX_EVIDENCE_REFERENCES_PER_MATCH);
+      if (inferredDirectEvidence.length > 0) {
+        return createMatch(
+          requirement,
+          inferredDirectEvidence.map((item) => item.id),
+          'requires-user-confirmation',
+          `Inferred evidence names ${requirementName}, but direct experience requires user confirmation.`,
         );
       }
 
-      const relatedEvidence = sortedEvidence
+      const allRelatedEvidence = sortedEvidence
         .map((item) => ({
           evidence: item,
           classification: findSkillRelationship(
@@ -291,6 +303,9 @@ export function matchEvidence(
             classification: 'partially-related' | 'strongly-related';
           } => candidate.classification !== undefined,
         );
+      const relatedEvidence = allRelatedEvidence.filter(
+        (candidate) => candidate.evidence.confidence !== 'inferred',
+      );
       if (relatedEvidence.length > 0) {
         const configuredClassification = relatedEvidence.some(
           (candidate) => candidate.classification === 'strongly-related',
@@ -315,6 +330,17 @@ export function matchEvidence(
           supportingEvidence.map((candidate) => candidate.evidence.id),
           classification,
           `${supportingEvidence.map((candidate) => candidate.evidence.name).join(', ')} is configured as ${configuredClassification} to ${requirementName}; it is not direct experience.${durationExplanation}`,
+        );
+      }
+      const inferredRelatedEvidence = allRelatedEvidence
+        .filter((candidate) => candidate.evidence.confidence === 'inferred')
+        .slice(0, MAX_EVIDENCE_REFERENCES_PER_MATCH);
+      if (inferredRelatedEvidence.length > 0) {
+        return createMatch(
+          requirement,
+          inferredRelatedEvidence.map((candidate) => candidate.evidence.id),
+          'requires-user-confirmation',
+          `Inferred related evidence cannot support ${requirementName} without user confirmation.`,
         );
       }
 

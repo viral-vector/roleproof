@@ -24,6 +24,10 @@ export interface RequirementExtractionResult {
   warnings: string[];
 }
 
+export interface CareerEvidenceExtractionOptions {
+  profileId?: string;
+}
+
 function stableId(prefix: string, ...parts: string[]): string {
   const hash = createHash('sha256').update(parts.join('\0'), 'utf8').digest('hex');
   return `${prefix}-${hash.slice(0, 24)}`;
@@ -155,6 +159,7 @@ function hasAffirmativeExperienceContext(
 export function extractCareerEvidence(
   resume: ParsedDocument,
   aliases: SkillAliasData,
+  options: CareerEvidenceExtractionOptions = {},
 ): CareerEvidence[] {
   const evidence: CareerEvidence[] = [];
   let inSkillsSection = false;
@@ -218,7 +223,7 @@ export function extractCareerEvidence(
       evidence.push(
         CareerEvidenceSchema.parse({
           id: stableId('evidence', resume.id, mention.canonicalName, line),
-          profileId: 'profile-local',
+          profileId: options.profileId ?? 'profile-local',
           category: evidenceCategory(mention.category),
           name: mention.canonicalName,
           normalizedName: mention.canonicalName,

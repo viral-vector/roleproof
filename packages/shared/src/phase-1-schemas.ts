@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-import { AnalysisResultSchema, RemotePreferenceSchema, type AnalysisResult } from './schemas.js';
+import {
+  AnalysisResultSchema,
+  CareerEvidenceSchema,
+  RemotePreferenceSchema,
+  type AnalysisResult,
+} from './schemas.js';
 
 const nonBlankStringSchema = z.string().refine((value) => value.trim().length > 0, {
   message: 'Value must not be blank',
@@ -71,30 +76,59 @@ export const CandidateContextSchema = z
     }
   });
 
-export const DeterministicAnalysisInputSchema = z
+const DeterministicAnalysisInputBaseSchema = z
   .object({
     resume: ParsedDocumentSchema,
     job: ParsedDocumentSchema,
     candidateContext: CandidateContextSchema,
   })
-  .strict()
-  .superRefine((input, context) => {
-    if (input.resume.kind !== 'resume') {
-      context.addIssue({
-        code: 'custom',
-        message: 'Resume input must have resume document kind',
-        path: ['resume', 'kind'],
-      });
-    }
+  .strict();
 
-    if (input.job.kind !== 'job') {
-      context.addIssue({
-        code: 'custom',
-        message: 'Job input must have job document kind',
-        path: ['job', 'kind'],
-      });
-    }
-  });
+function validateDocumentRoles(
+  input: z.infer<typeof DeterministicAnalysisInputBaseSchema>,
+  context: z.RefinementCtx,
+): void {
+  if (input.resume.kind !== 'resume') {
+    context.addIssue({
+      code: 'custom',
+      message: 'Resume input must have resume document kind',
+      path: ['resume', 'kind'],
+    });
+  }
+
+  if (input.job.kind !== 'job') {
+    context.addIssue({
+      code: 'custom',
+      message: 'Job input must have job document kind',
+      path: ['job', 'kind'],
+    });
+  }
+}
+
+export const DeterministicAnalysisInputSchema =
+  DeterministicAnalysisInputBaseSchema.superRefine(validateDocumentRoles);
+
+export const EvidenceAwareDeterministicAnalysisInputSchema =
+  DeterministicAnalysisInputBaseSchema.extend({
+    profileId: nonBlankStringSchema.optional(),
+    evidence: z.array(CareerEvidenceSchema),
+  })
+    .strict()
+    .superRefine((input, context) => {
+      validateDocumentRoles(input, context);
+      if (input.profileId === undefined) {
+        return;
+      }
+      for (const [index, evidence] of input.evidence.entries()) {
+        if (evidence.profileId !== input.profileId) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Evidence must belong to the supplied profile',
+            path: ['evidence', index, 'profileId'],
+          });
+        }
+      }
+    });
 
 export const SkillAliasCategorySchema = z.enum([
   'language',
@@ -245,6 +279,9 @@ export type ParseWarning = z.infer<typeof ParseWarningSchema>;
 export type ParsedDocument = z.infer<typeof ParsedDocumentSchema>;
 export type CandidateContext = z.infer<typeof CandidateContextSchema>;
 export type DeterministicAnalysisInput = z.infer<typeof DeterministicAnalysisInputSchema>;
+export type EvidenceAwareDeterministicAnalysisInput = z.infer<
+  typeof EvidenceAwareDeterministicAnalysisInputSchema
+>;
 export type SkillAliasCategory = z.infer<typeof SkillAliasCategorySchema>;
 export type SkillAliasData = z.infer<typeof SkillAliasDataSchema>;
 export type SkillRelationshipData = z.infer<typeof SkillRelationshipDataSchema>;

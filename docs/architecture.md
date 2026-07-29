@@ -1,15 +1,16 @@
 # Architecture
 
-## Phase 1 Boundary
+## Phase 2 Boundary
 
-Phase 1 provides local deterministic analysis without storage, providers, a server, or a web UI.
-The implemented dependency direction is:
+Phase 2 provides local deterministic, evidence-aware analysis with SQLite storage. Providers, a
+server, and a web UI are not implemented. The implemented dependency direction is:
 
 ```text
 apps/cli
   |--> packages/parsers ----|
   |--> packages/core -------|--> packages/shared
   |--> packages/reporters --|
+  |--> packages/storage --------> packages/shared
 ```
 
 `packages/shared` is the canonical contract package. It owns strict Zod schemas and derives
@@ -24,8 +25,9 @@ during builds so packaged analysis does not depend on the caller's working direc
 ### CLI
 
 `apps/cli` owns command parsing, stream routing, report-file writes, and process exit behavior. The
-`analyze` action delegates parsing, analysis, and rendering to their packages. It does not match or
-score evidence.
+`analyze` action delegates parsing, analysis, storage, and rendering to their packages. It does not
+match or score evidence. Storage is enabled by default; `--no-store` bypasses storage unless an
+explicit profile requires a read-only profile snapshot.
 
 ### Shared
 
@@ -49,25 +51,39 @@ envelope only, including when a blocker produces exit code `10`.
 ### Core
 
 `packages/core` owns versioned normalization data, explicit evidence and requirement extraction,
-non-transitive matching, blockers, explainable scoring, recommendations, stable IDs, and
-deterministic orchestration. Requirement importance is resolved clause-by-clause, and eligibility
-blockers consume the resulting structured required requirements rather than independently guessing
-qualification headings. Repeated evidence and semantic requirements are deduplicated, match
-evidence references are bounded, and output ordering uses locale-independent comparison. Hard
-blockers remain separate from the numeric score.
+evidence-aware non-transitive matching, blockers, explainable scoring, recommendations, stable IDs,
+and deterministic orchestration. Its evidence-aware entry point accepts profile evidence through a
+shared schema and does not depend on storage. Inferred evidence remains confirmation-only and earns
+zero points. Requirement importance is resolved clause-by-clause, and eligibility blockers consume
+the resulting structured required requirements rather than independently guessing qualification
+headings. Repeated evidence and semantic requirements are deduplicated, match evidence references
+are bounded, and output ordering uses locale-independent comparison. Hard blockers remain separate
+from the numeric score.
 
 ### Parsers
 
 `packages/parsers` extracts bounded untrusted document content without assigning career evidence.
 It normalizes plaintext, extracts PDF text, rejects blank or binary-like input, and enforces byte,
 page, image, and timeout limits before or during extraction. PDF.js resources are released after
-completion and on timeout. Phase 1 accepts PDF resumes and plaintext jobs.
+completion and on timeout. Phase 2 accepts PDF resumes and plaintext jobs.
 
 ### Reporters
 
 `packages/reporters` validates and renders `AnalysisResult` values without recalculating them. JSON
 uses the shared envelope schema; Markdown displays blockers, classifications, evidence IDs, and
 score contributions.
+
+### Storage
+
+`packages/storage` owns Kysely repositories, the `better-sqlite3` connection, migrations,
+duplicate detection, analysis history, evidence-reference snapshots, FTS5 search, and complete
+database-file purge. It defaults to `~/.roleproof/roleproof.db`, enables foreign keys and WAL for
+writable file databases, and remains outside the deterministic core.
+
+Normal analysis stores profiles, resume documents and extracted evidence, jobs and requirements,
+analysis results, evidence references, and Markdown reports. Profile-wide evidence participates in
+analysis only when the caller explicitly supplies `--profile`. `--no-store --profile` opens the
+existing SQLite database read-only so SQLite includes a consistent view of live WAL content.
 
 ## Permanent Boundaries
 
@@ -81,6 +97,6 @@ score contributions.
 
 ## Deferred Architecture
 
-SQLite storage begins in Phase 2, optional AI providers in Phase 3, the local API and web UI in
-Phase 4, URL analysis in Phase 5, and automation integrations in Phase 6. None of these components
-is required to install or use the deterministic CLI foundation.
+Optional AI providers begin in Phase 3, the local API and web UI in Phase 4, URL analysis in Phase
+5, and automation integrations in Phase 6. None of these components is implemented or required to
+use the deterministic CLI and local storage foundation.

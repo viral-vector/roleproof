@@ -15,6 +15,25 @@ The envelope and analysis are validated with the canonical Zod schemas in `packa
 Unknown fields are rejected at current boundaries. JSON stdout contains no logging, progress text,
 or Markdown.
 
+The Analysis envelope remains unchanged at version `1.0`. Phase 2 storage commands add a separate
+strict command envelope rather than adding fields to the Analysis envelope:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "command": "history",
+  "data": {
+    "history": []
+  }
+}
+```
+
+Command envelope names are `init`, `profile.create`, `profile.show`, `profile.evidence.add`,
+`profile.evidence.edit`, `profile.evidence.remove`, `report.show`, `history`, `search`, and
+`data.purge`. Their `data` values contain the corresponding profile, document, career-evidence,
+analysis-history, search-result, or purge-result schemas. This is additive and does not change
+machine-readable output from `analyze --format json`.
+
 Important analysis fields include:
 
 - `overallScore`: evidence-based fit from 0 through 100
@@ -28,6 +47,19 @@ Important analysis fields include:
 - `suggestedEmphasis`: evidence-linked safe emphasis
 - `suggestedAdditions`: additions that require confirmation where applicable
 - `metadata`: deterministic mode, engine/data versions, and parsing confidence
+
+Stored analyses retain an immutable `evidenceReferences` snapshot, returned by `report.show` in its
+command envelope alongside `analysis`. Each reference contains:
+
+- `evidenceId`: the ID cited by the analysis
+- `sourceType`: `career-evidence`, `profile-fact`, or `resume-text`
+- `sourceId`: the source record ID
+- `sourceDocumentId`: the optional stored source-document ID
+- `sourceText`: optional supporting source text
+- `confidence`: `explicit`, `inferred`, or `user-confirmed`
+
+Inferred references do not become scored evidence: matching classifies them
+`requires-user-confirmation` with zero points.
 
 `generatedAt` is operational metadata. Determinism comparisons ignore only this timestamp; IDs,
 scores, classifications, explanations, contributions, and ordering remain stable for identical

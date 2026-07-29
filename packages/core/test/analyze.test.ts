@@ -2,11 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AnalysisResultSchema,
+  type CareerEvidence,
   type DeterministicAnalysisInput,
   type ParsedDocument,
 } from '@roleproof/shared';
 
-import { analyzeDeterministic } from '../src/index.js';
+import {
+  DEFAULT_NORMALIZATION_DATA,
+  analyzeDeterministic,
+  analyzeDeterministicWithEvidence,
+  extractCareerEvidence,
+} from '../src/index.js';
 
 const resume: ParsedDocument = {
   schemaVersion: '1.0',
@@ -186,5 +192,76 @@ describe('analyzeDeterministic', () => {
       expect.objectContaining({ classification: 'unknown', evidenceIds: [] }),
     ]);
     expect(result.unsupportedClaims).toEqual([]);
+  });
+});
+
+describe('analyzeDeterministicWithEvidence', () => {
+  const generatedAt = '2026-01-01T00:00:00.000Z';
+  const profileId = 'profile-fictional';
+  const suppliedEvidence = extractCareerEvidence(resume, DEFAULT_NORMALIZATION_DATA.aliases, {
+    profileId,
+  });
+
+  it('uses caller-supplied evidence, reports its profile, and enforces profile ownership', () => {
+    const result = analyzeDeterministicWithEvidence(
+      { ...input, profileId, evidence: suppliedEvidence },
+      { generatedAt },
+    );
+
+    expect(result.profileId).toBe(profileId);
+    expect(() =>
+      analyzeDeterministicWithEvidence({
+        ...input,
+        profileId,
+        evidence: [{ ...suppliedEvidence[0]!, profileId: 'profile-other' }],
+      }),
+    ).toThrow();
+    expect(
+      analyzeDeterministicWithEvidence({ ...input, evidence: suppliedEvidence }, { generatedAt }),
+    ).not.toHaveProperty('profileId');
+  });
+
+  it('includes sorted canonical evidence in its stable ID without mutating inputs', () => {
+    const evidence = [...suppliedEvidence].reverse();
+    const snapshot = structuredClone(evidence);
+    const first = analyzeDeterministicWithEvidence(
+      { ...input, profileId, evidence },
+      { generatedAt },
+    );
+    const repeated = analyzeDeterministicWithEvidence(
+      { ...input, profileId, evidence: [...evidence].reverse() },
+      { generatedAt },
+    );
+    const edited = evidence.map((item, index): CareerEvidence =>
+      index === 0 ? { ...item, description: `${item.description} Confirmed detail.` } : item,
+    );
+
+    expect(repeated).toEqual(first);
+    expect(evidence).toEqual(snapshot);
+    expect(
+      analyzeDeterministicWithEvidence({ ...input, profileId, evidence: edited }, { generatedAt })
+        .id,
+    ).not.toBe(first.id);
+  });
+
+  it('preserves the existing scoring and hard-blocker pipeline', () => {
+    const blockedInput: DeterministicAnalysisInput = {
+      ...input,
+      job: { ...job, text: `${job.text}\nSalary: USD 80000-100000 annually.` },
+      candidateContext: { ...input.candidateContext, targetSalaryMin: 120_000 },
+    };
+    const legacy = analyzeDeterministic(blockedInput, { generatedAt });
+    const evidenceAware = analyzeDeterministicWithEvidence(
+      {
+        ...blockedInput,
+        evidence: extractCareerEvidence(blockedInput.resume, DEFAULT_NORMALIZATION_DATA.aliases),
+      },
+      { generatedAt },
+    );
+
+    expect(evidenceAware.overallScore).toBe(legacy.overallScore);
+    expect(evidenceAware.scoreContributions).toEqual(legacy.scoreContributions);
+    expect(evidenceAware.hardBlockers).toEqual(legacy.hardBlockers);
+    expect(evidenceAware.recommendation).toBe('skip');
   });
 });

@@ -1,10 +1,12 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AnalysisEnvelopeSchema } from '@roleproof/shared';
+import { closeStorage, createRoleProofRepositories, openStorage } from '@roleproof/storage';
 
 import { runCli } from '../src/program.js';
 
@@ -44,6 +46,10 @@ interface InvocationResult {
 
 function parseJson(value: string): unknown {
   return JSON.parse(value) as unknown;
+}
+
+function hash(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 async function invoke(args: string[]): Promise<InvocationResult> {
@@ -110,6 +116,7 @@ describe('roleproof analyze', () => {
       '--job',
       jobPath,
       '--no-ai',
+      '--no-store',
       '--format',
       'markdown',
       '--stdout',
@@ -134,6 +141,7 @@ describe('roleproof analyze', () => {
       '--job',
       jobPath,
       '--no-ai',
+      '--no-store',
       '--format',
       'both',
       '--out',
@@ -157,6 +165,7 @@ describe('roleproof analyze', () => {
       '--job',
       jobPath,
       '--no-ai',
+      '--no-store',
       '--format',
       'both',
       '--stdout',
@@ -176,6 +185,7 @@ describe('roleproof analyze', () => {
       '--job',
       jobPath,
       '--no-ai',
+      '--no-store',
       '--format',
       'json',
       '--stdout',
@@ -197,6 +207,7 @@ describe('roleproof analyze', () => {
       '--job',
       jobPath,
       '--no-ai',
+      '--no-store',
       '--format',
       'json',
       '--stdout',
@@ -211,5 +222,389 @@ describe('roleproof analyze', () => {
     };
     expect(output.analysis.recommendation).toBe('skip');
     expect(output.analysis.hardBlockers).toEqual([expect.stringContaining('Compensation maximum')]);
+  });
+
+  it('persists the default profile, active resume evidence, job requirements, and report', async () => {
+    const databasePath = join(directory, 'custom roleproof.db');
+    const result = await invoke([
+      '--db',
+      databasePath,
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--no-ai',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: '' });
+    const output = AnalysisEnvelopeSchema.parse(parseJson(result.stdout));
+    const database = await openStorage({ path: databasePath });
+    try {
+      const repositories = createRoleProofRepositories(database);
+      expect(await repositories.profiles.get('profile-local')).toBeDefined();
+      expect(await repositories.documents.get(output.analysis.resumeDocumentId!)).toBeDefined();
+      expect(
+        await repositories.evidence.listByDocument(output.analysis.resumeDocumentId!),
+      ).not.toEqual([]);
+      expect(await repositories.jobs.get(output.analysis.jobId!)).toBeDefined();
+      expect(await repositories.jobs.getRequirements(output.analysis.jobId!)).not.toEqual([]);
+      const stored = await repositories.analyses.get(output.analysis.id);
+      expect(stored?.report).toContain('# RoleProof Analysis');
+      expect(stored?.evidenceReferences.length).toBeGreaterThan(0);
+    } finally {
+      await closeStorage(database);
+    }
+  });
+
+  it('does not create a database or parent directory in unprofiled no-store mode', async () => {
+    const databasePath = join(directory, 'must-not-exist', 'roleproof.db');
+    const result = await invoke([
+      '--db',
+      databasePath,
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: '' });
+    await expect(access(join(directory, 'must-not-exist'))).rejects.toThrow();
+  });
+
+  it('persists blocker analyses before returning exit code 10', async () => {
+    const databasePath = join(directory, 'blocker.db');
+    await writeFile(jobPath, jobText.replace('USD 120000-150000', 'USD 80000-100000'), 'utf8');
+    const result = await invoke([
+      '--db',
+      databasePath,
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--no-ai',
+      '--format',
+      'json',
+      '--stdout',
+      '--target-salary-min',
+      '120000',
+    ]);
+    const output = AnalysisEnvelopeSchema.parse(parseJson(result.stdout));
+
+    expect(result.exitCode).toBe(10);
+    const database = await openStorage({ path: databasePath });
+    try {
+      expect(
+        (await createRoleProofRepositories(database).analyses.get(output.analysis.id))?.result
+          .hardBlockers,
+      ).not.toEqual([]);
+    } finally {
+      await closeStorage(database);
+    }
+  });
+
+  it('reuses records across identical persisted runs', async () => {
+    const databasePath = join(directory, 'repeat.db');
+    const args = [
+      '--db',
+      databasePath,
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--no-ai',
+      '--format',
+      'json',
+      '--stdout',
+    ];
+    const first = await invoke(args);
+    const second = await invoke(args);
+
+    expect(first).toMatchObject({ exitCode: 0, stderr: '' });
+    expect(second).toMatchObject({ exitCode: 0, stderr: '' });
+    const firstOutput = AnalysisEnvelopeSchema.parse(parseJson(first.stdout));
+    const secondOutput = AnalysisEnvelopeSchema.parse(parseJson(second.stdout));
+    expect({ ...secondOutput.analysis, generatedAt: 'ignored' }).toEqual({
+      ...firstOutput.analysis,
+      generatedAt: 'ignored',
+    });
+    const database = await openStorage({ path: databasePath });
+    try {
+      const repositories = createRoleProofRepositories(database);
+      expect(await repositories.documents.listByProfile('profile-local')).toHaveLength(1);
+      expect(await repositories.analyses.listHistory()).toHaveLength(1);
+      const jobs = await database
+        .selectFrom('jobs')
+        .select(({ fn }) => fn.countAll<number>().as('count'))
+        .executeTakeFirstOrThrow();
+      expect(jobs.count).toBe(1);
+    } finally {
+      await closeStorage(database);
+    }
+  });
+
+  it('requires an available database for profile no-store mode without creating it', async () => {
+    const databasePath = join(directory, 'missing', 'roleproof.db');
+    const result = await invoke([
+      '--db',
+      databasePath,
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--profile',
+      'profile-missing',
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result).toMatchObject({ exitCode: 5, stdout: '' });
+    expect(result.stderr).toContain('Storage operation failed');
+    await expect(access(join(directory, 'missing'))).rejects.toThrow();
+  });
+
+  it('uses selected profile evidence read-only and keeps cited IDs resolvable', async () => {
+    const databasePath = join(directory, 'profile-read-only.db');
+    const database = await openStorage({ path: databasePath });
+    try {
+      const repositories = createRoleProofRepositories(database);
+      await repositories.profiles.create({
+        id: 'profile-selected',
+        name: 'Selected fictional profile',
+        targetTitles: [],
+        preferredLocations: [],
+      });
+      const text = 'User-confirmed Kubernetes platform work.';
+      await repositories.documents.insert(
+        {
+          schemaVersion: '1.0',
+          id: 'document-profile-note',
+          profileId: 'profile-selected',
+          kind: 'evidence-note',
+          format: 'plaintext',
+          contentSha256: hash(text),
+          parsedContentSha256: hash(text),
+          text,
+          confidence: 1,
+          warnings: [],
+        },
+        [
+          {
+            id: 'evidence-profile-kubernetes',
+            profileId: 'profile-selected',
+            category: 'skill',
+            name: 'Kubernetes',
+            normalizedName: 'kubernetes',
+            description: text,
+            sourceDocumentId: 'document-profile-note',
+            sourceText: text,
+            confidence: 'user-confirmed',
+          },
+        ],
+      );
+    } finally {
+      await closeStorage(database);
+    }
+    await writeFile(jobPath, 'Required Qualifications\n- Kubernetes is required', 'utf8');
+    const filesBefore = (await readdir(directory)).sort();
+
+    const result = await invoke([
+      '--db',
+      databasePath,
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--profile',
+      'profile-selected',
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: '' });
+    const output = AnalysisEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(output.analysis.matchedRequirements).toEqual([
+      expect.objectContaining({ evidenceIds: ['evidence-profile-kubernetes'], score: 1 }),
+    ]);
+    expect(
+      (await readdir(directory))
+        .filter(
+          (name) => name !== 'profile-read-only.db-wal' && name !== 'profile-read-only.db-shm',
+        )
+        .sort(),
+    ).toEqual(filesBefore);
+    const readDatabase = await openStorage({ path: databasePath, readOnly: true });
+    try {
+      const repositories = createRoleProofRepositories(readDatabase);
+      expect(await repositories.evidence.get('evidence-profile-kubernetes')).toBeDefined();
+      expect(await repositories.analyses.listHistory()).toEqual([]);
+    } finally {
+      await closeStorage(readDatabase);
+    }
+  });
+
+  it('preserves user edits when a duplicate resume is analyzed again', async () => {
+    const databasePath = join(directory, 'duplicate-edit.db');
+    const first = await invoke([
+      '--db',
+      databasePath,
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--no-ai',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+    expect(first.exitCode).toBe(0);
+    const firstOutput = AnalysisEnvelopeSchema.parse(parseJson(first.stdout));
+    const database = await openStorage({ path: databasePath });
+    let editedId: string;
+    try {
+      const repositories = createRoleProofRepositories(database);
+      const evidence = await repositories.evidence.listByDocument(
+        firstOutput.analysis.resumeDocumentId!,
+      );
+      const extracted = evidence[0];
+      if (extracted === undefined) throw new Error('Expected extracted resume evidence');
+      editedId = extracted.id;
+      await repositories.evidence.edit(extracted.id, {
+        name: 'Kubernetes',
+        normalizedName: 'kubernetes',
+        description: 'User-confirmed correction to Kubernetes.',
+      });
+    } finally {
+      await closeStorage(database);
+    }
+    await writeFile(jobPath, 'Required Qualifications\n- Kubernetes is required', 'utf8');
+
+    const second = await invoke([
+      '--db',
+      databasePath,
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--profile',
+      'profile-local',
+      '--no-ai',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(second).toMatchObject({ exitCode: 0, stderr: '' });
+    const secondOutput = AnalysisEnvelopeSchema.parse(parseJson(second.stdout));
+    expect(secondOutput.analysis.resumeDocumentId).toBe(firstOutput.analysis.resumeDocumentId);
+    expect(secondOutput.analysis.matchedRequirements[0]?.evidenceIds).toContain(editedId!);
+    const checkDatabase = await openStorage({ path: databasePath });
+    try {
+      const repositories = createRoleProofRepositories(checkDatabase);
+      expect(await repositories.documents.listByProfile('profile-local')).toHaveLength(1);
+      expect((await repositories.evidence.get(editedId!))?.description).toBe(
+        'User-confirmed correction to Kubernetes.',
+      );
+    } finally {
+      await closeStorage(checkDatabase);
+    }
+  });
+
+  it('awards zero points for inferred selected-profile evidence', async () => {
+    const databasePath = join(directory, 'inferred-profile.db');
+    const database = await openStorage({ path: databasePath });
+    try {
+      const repositories = createRoleProofRepositories(database);
+      await repositories.profiles.create({
+        id: 'profile-inferred',
+        targetTitles: [],
+        preferredLocations: [],
+      });
+      const text = 'Unconfirmed Kubernetes inference.';
+      await repositories.documents.insert(
+        {
+          schemaVersion: '1.0',
+          id: 'document-inferred',
+          profileId: 'profile-inferred',
+          kind: 'evidence-note',
+          format: 'plaintext',
+          contentSha256: hash(text),
+          parsedContentSha256: hash(text),
+          text,
+          confidence: 0.5,
+          warnings: [],
+        },
+        [
+          {
+            id: 'evidence-inferred-kubernetes',
+            profileId: 'profile-inferred',
+            category: 'skill',
+            name: 'Kubernetes',
+            normalizedName: 'kubernetes',
+            description: text,
+            sourceDocumentId: 'document-inferred',
+            sourceText: text,
+            confidence: 'inferred',
+          },
+        ],
+      );
+    } finally {
+      await closeStorage(database);
+    }
+    await writeFile(jobPath, 'Required Qualifications\n- Kubernetes is required', 'utf8');
+
+    const result = await invoke([
+      '--db',
+      databasePath,
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--profile',
+      'profile-inferred',
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: '' });
+    const output = AnalysisEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(output.analysis.matchedRequirements).toEqual([
+      expect.objectContaining({
+        classification: 'requires-user-confirmation',
+        evidenceIds: ['evidence-inferred-kubernetes'],
+        score: 0,
+      }),
+    ]);
+    expect(output.analysis.scoreContributions).toEqual([
+      expect.objectContaining({
+        evidenceIds: ['evidence-inferred-kubernetes'],
+        pointsAwarded: 0,
+      }),
+    ]);
   });
 });

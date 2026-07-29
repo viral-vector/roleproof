@@ -5,6 +5,7 @@ import {
   AnalysisResultSchema,
   CandidateContextSchema,
   DeterministicAnalysisInputSchema,
+  EvidenceAwareDeterministicAnalysisInputSchema,
   ParseWarningSchema,
   ParsedDocumentSchema,
   ParserConfigSchema,
@@ -14,6 +15,7 @@ import {
   SkillRelationshipDataSchema,
   type AnalysisEnvelope,
   type DeterministicAnalysisInput,
+  type EvidenceAwareDeterministicAnalysisInput,
 } from '../src/index.js';
 
 const resumeDocument = {
@@ -135,6 +137,60 @@ describe('DeterministicAnalysisInputSchema', () => {
         resume: jobDocument,
         job: resumeDocument,
         candidateContext,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('EvidenceAwareDeterministicAnalysisInputSchema', () => {
+  const evidence = {
+    id: 'evidence-a1',
+    profileId: 'profile-a1',
+    category: 'skill',
+    name: 'TypeScript',
+    normalizedName: 'TypeScript',
+    description: 'Explicit fictional TypeScript evidence.',
+    sourceDocumentId: resumeDocument.id,
+    confidence: 'explicit',
+  } as const;
+
+  it('accepts validated caller-supplied evidence without changing the legacy input schema', () => {
+    const parsed = EvidenceAwareDeterministicAnalysisInputSchema.parse({
+      resume: resumeDocument,
+      job: jobDocument,
+      candidateContext,
+      profileId: 'profile-a1',
+      evidence: [evidence],
+    });
+
+    expectTypeOf(parsed).toEqualTypeOf<EvidenceAwareDeterministicAnalysisInput>();
+    expect(
+      DeterministicAnalysisInputSchema.safeParse({
+        resume: resumeDocument,
+        job: jobDocument,
+        candidateContext,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects invalid evidence and evidence owned by another supplied profile', () => {
+    const base = {
+      resume: resumeDocument,
+      job: jobDocument,
+      candidateContext,
+      profileId: 'profile-a1',
+    };
+
+    expect(
+      EvidenceAwareDeterministicAnalysisInputSchema.safeParse({
+        ...base,
+        evidence: [{ ...evidence, confidence: 'likely' }],
+      }).success,
+    ).toBe(false);
+    expect(
+      EvidenceAwareDeterministicAnalysisInputSchema.safeParse({
+        ...base,
+        evidence: [{ ...evidence, profileId: 'profile-other' }],
       }).success,
     ).toBe(false);
   });

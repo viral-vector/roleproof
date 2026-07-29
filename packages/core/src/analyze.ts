@@ -4,8 +4,11 @@ import {
   AnalysisResultSchema,
   CandidateContextSchema,
   DeterministicAnalysisInputSchema,
+  EvidenceAwareDeterministicAnalysisInputSchema,
   type CandidateContext,
+  type CareerEvidence,
   type DeterministicAnalysisInput,
+  type EvidenceAwareDeterministicAnalysisInput,
   type Phase1AnalysisResult,
   type Suggestion,
   type UnsupportedClaim,
@@ -34,6 +37,19 @@ function stableAnalysisId(input: DeterministicAnalysisInput): string {
   };
   const hash = createHash('sha256')
     .update(`${input.resume.id}\0${input.job.id}\0${JSON.stringify(canonicalContext)}`, 'utf8')
+    .digest('hex');
+  return `analysis-${hash.slice(0, 24)}`;
+}
+
+function stableEvidenceAwareAnalysisId(input: EvidenceAwareDeterministicAnalysisInput): string {
+  const canonicalEvidence = input.evidence
+    .map((evidence) => JSON.stringify(evidence))
+    .sort(compareStableStrings);
+  const hash = createHash('sha256')
+    .update(
+      `${stableAnalysisId(input)}\0${input.profileId ?? ''}\0${canonicalEvidence.join('\0')}`,
+      'utf8',
+    )
     .digest('hex');
   return `analysis-${hash.slice(0, 24)}`;
 }
@@ -77,6 +93,30 @@ export function analyzeDeterministic(
 ): Phase1AnalysisResult {
   const input = DeterministicAnalysisInputSchema.parse(rawInput);
   const evidence = extractCareerEvidence(input.resume, DEFAULT_NORMALIZATION_DATA.aliases);
+  return analyzeValidated(input, evidence, stableAnalysisId(input), undefined, options);
+}
+
+export function analyzeDeterministicWithEvidence(
+  rawInput: EvidenceAwareDeterministicAnalysisInput,
+  options: DeterministicAnalysisOptions = {},
+): Phase1AnalysisResult {
+  const input = EvidenceAwareDeterministicAnalysisInputSchema.parse(rawInput);
+  return analyzeValidated(
+    input,
+    input.evidence,
+    stableEvidenceAwareAnalysisId(input),
+    input.profileId,
+    options,
+  );
+}
+
+function analyzeValidated(
+  input: DeterministicAnalysisInput,
+  evidence: CareerEvidence[],
+  analysisId: string,
+  profileId: string | undefined,
+  options: DeterministicAnalysisOptions,
+): Phase1AnalysisResult {
   const extraction = extractJobRequirements(input.job, DEFAULT_NORMALIZATION_DATA.aliases);
   const candidateContext = mergeExplicitCandidateFacts(input.candidateContext, input.resume.text);
   const matches = matchEvidence(
@@ -158,7 +198,8 @@ export function analyzeDeterministic(
 
   const parsed = AnalysisResultSchema.parse({
     schemaVersion: '1.0',
-    id: stableAnalysisId(input),
+    id: analysisId,
+    ...(profileId === undefined ? {} : { profileId }),
     resumeDocumentId: input.resume.id,
     jobId: input.job.id,
     overallScore: scoring.overallScore,

@@ -6,17 +6,16 @@ inventing experience or presenting a fit score as an interview or hiring probabi
 
 ## Project Status
 
-Phase 1 provides a deterministic CLI MVP. It accepts plaintext or PDF resumes and plaintext job
-descriptions, normalizes skills, distinguishes exact and related evidence, detects explicit hard
-blockers, produces explainable scores, and renders schema-versioned JSON or Markdown.
+Phase 2 adds local SQLite persistence to the deterministic CLI. RoleProof accepts plaintext or PDF
+resumes and plaintext job descriptions, stores profiles and career evidence, retains analysis
+history, supports full-text search, and renders schema-versioned JSON or Markdown.
 
-SQLite persistence, AI providers, job URL fetching, the local API, and the web UI are not
-implemented. See [`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the phased product
-specification.
+AI providers, job URL fetching, the local API, and the web UI are not implemented. See
+[`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the phased product specification.
 
 ## Requirements
 
-- Node.js 22 or newer
+- Node.js 22, 23, or 24
 - pnpm 10.24.0 through Corepack
 
 ```powershell
@@ -49,9 +48,16 @@ pnpm exec roleproof analyze `
   --stdout
 ```
 
-Supported Phase 1 options include `--format markdown|json|both`, `--out`, `--stdout`, `--no-ai`,
-`--no-store`, salary targets, location, and remote preference. PDF input is supported for resumes;
-job descriptions must be plaintext.
+Analysis persists by default to `~/.roleproof/roleproof.db`. Use the global `--db
+<absolute-sqlite-path>` option to select another database, or `--no-store` to avoid persistence.
+Supported options include `--format markdown|json|both`, `--out`, `--stdout`, `--no-ai`,
+`--no-store`, `--profile`, salary targets, location, and remote preference. PDF input is supported
+for resumes; job descriptions must be plaintext.
+
+Without `--profile`, analysis uses evidence extracted from the supplied resume and stores it under
+the default local profile. Pass an explicit `--profile <id>` to also analyze against all evidence
+stored for that profile. Inferred evidence is confirmation-only, is classified
+`requires-user-confirmation`, and contributes zero points.
 
 Single formats write to stdout unless `--out` is provided. `--format both` writes
 `roleproof-analysis.json` and `roleproof-analysis.md` to `--out`, or to the current directory when
@@ -60,13 +66,35 @@ Single formats write to stdout unless `--out` is provided. `--format both` write
 Exit code `3` identifies file or parsing errors. Exit code `10` means analysis succeeded but found
 an explicit hard eligibility blocker. JSON output remains valid in the blocker case.
 
+## Local Storage
+
+```powershell
+pnpm exec roleproof init
+pnpm exec roleproof profile create --name "Fictional Candidate"
+pnpm exec roleproof profile show --profile <profile-id>
+pnpm exec roleproof profile evidence add --profile <profile-id> --resume fixtures/phase-1/strong-match/resume.txt
+pnpm exec roleproof profile evidence add --profile <profile-id> --category skill --name TypeScript --description "Built fictional TypeScript services."
+pnpm exec roleproof profile evidence edit --evidence <evidence-id> --description "Updated fictional evidence."
+pnpm exec roleproof profile evidence remove --evidence <evidence-id>
+pnpm exec roleproof history --profile <profile-id>
+pnpm exec roleproof report show --analysis <analysis-id> --format json
+pnpm exec roleproof search --query TypeScript
+pnpm exec roleproof data purge --yes
+```
+
+Storage commands default to text output and support `--format json`; `report show` supports
+`markdown` or `json`. Resume imports and manual evidence notes are profile-scoped. `history` lists
+stored analyses, and `search` queries stored documents, jobs, career evidence, and analysis
+reports. Permanent deletion is noninteractive and requires `data purge --yes`.
+
 ## Workspace
 
 - `apps/cli`: Commander-based command-line shell
 - `packages/shared`: canonical Zod schemas and inferred TypeScript domain types
-- `packages/core`: deterministic extraction, matching, blockers, scoring, and recommendations
+- `packages/core`: deterministic extraction, evidence-aware matching, blockers, scoring, and recommendations
 - `packages/parsers`: bounded plaintext and PDF extraction
 - `packages/reporters`: validated JSON and Markdown rendering
+- `packages/storage`: Kysely repositories and migrations backed by `better-sqlite3`
 - `docs`: architecture and engineering documentation
 
 Shared schemas are defined before handlers or analysis behavior. Business logic must remain
@@ -77,9 +105,11 @@ separate from building or testing the local workspace.
 
 ## Privacy
 
-RoleProof keeps resume and job data local. Phase 1 has no telemetry, networking, database,
-provider integration, or hidden persistence. `--no-store` is an explicit no-persistence guarantee;
-files requested with `--out` are report exports, not analysis history.
+RoleProof keeps resume, job, profile, evidence, and analysis data in local SQLite storage by
+default. It has no telemetry, provider integration, or network requests. `--no-store` does not
+write analysis content; with an explicit `--profile`, it opens the existing database read-only and
+query-only so SQLite can include committed WAL content. SQLite may temporarily manage WAL/SHM
+coordination files. Files requested with `--out` are report exports, not analysis history.
 
 ## Limitations
 
@@ -93,6 +123,11 @@ files requested with `--out` are report exports, not analysis history.
 - Missing authorization, clearance, license, education, location, or salary evidence does not
   become a blocker.
 - Related skills never become direct experience, and transitive skill relationships are not used.
+- Profile-wide evidence is used only with an explicit `--profile`; inferred evidence always
+  requires confirmation and contributes zero points.
+- Local persistence uses Kysely with `better-sqlite3` at `~/.roleproof/roleproof.db` by default.
+- Read-only profile analysis rejects a database with live uncheckpointed WAL content.
+- `data purge` requires `--yes` and removes the database plus its WAL and SHM sidecars.
 - Scores describe evidence-based fit only and do not predict employer outcomes.
 - Analysis is bounded to 500 semantic requirements and 100 evidence references per match; exceeding
   the requirement limit produces a manual-review result.

@@ -1,8 +1,8 @@
 {
-  "name": "@roleproof/shared",
+  "name": "@roleproof/storage",
   "version": "0.1.0",
   "private": false,
-  "description": "Shared RoleProof schemas and domain types",
+  "description": "RoleProof local SQLite storage foundation",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -20,7 +20,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/viral-vector/roleproof.git",
-    "directory": "packages/shared"
+    "directory": "packages/storage"
   },
   "publishConfig": {
     "access": "public"
@@ -31,6 +31,11 @@
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
-    "zod": "4.4.3"
+    "@roleproof/shared": "workspace:*",
+    "better-sqlite3": "12.4.1",
+    "kysely": "0.29.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13"
   }
 }

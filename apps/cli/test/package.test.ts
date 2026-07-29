@@ -27,6 +27,7 @@ describe('@roleproof/cli package export', () => {
       ['packages/parsers/package.json', 'packages/parsers'],
       ['packages/reporters/package.json', 'packages/reporters'],
       ['packages/shared/package.json', 'packages/shared'],
+      ['packages/storage/package.json', 'packages/storage'],
     ];
 
     const rootLicense = readFileSync('LICENSE', 'utf8');
@@ -35,6 +36,7 @@ describe('@roleproof/cli package export', () => {
         private?: boolean;
         publishConfig?: { access?: string };
         repository?: { directory?: string; type?: string; url?: string };
+        engines?: { node?: string };
         scripts?: Record<string, string>;
         version?: string;
       };
@@ -42,6 +44,7 @@ describe('@roleproof/cli package export', () => {
       expect(packageJson.version, packagePath).toBe('0.1.0');
       expect(packageJson.private, packagePath).toBe(false);
       expect(packageJson.publishConfig, packagePath).toEqual({ access: 'public' });
+      expect(packageJson.engines?.node, packagePath).toBe('>=22.0.0 <25');
       expect(packageJson.repository, packagePath).toEqual({
         type: 'git',
         url: 'https://github.com/viral-vector/roleproof.git',
