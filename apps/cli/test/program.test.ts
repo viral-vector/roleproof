@@ -32,7 +32,7 @@ describe('RoleProof CLI program', () => {
   it('prints only the package version to stdout and exits successfully', async () => {
     const result = await invoke(['--version']);
 
-    expect(result).toEqual({ exitCode: 0, stderr: '', stdout: '0.0.0\n' });
+    expect(result).toEqual({ exitCode: 0, stderr: '', stdout: '0.1.0\n' });
   });
 
   it('reports an unknown option on stderr with the invalid-arguments exit code', async () => {

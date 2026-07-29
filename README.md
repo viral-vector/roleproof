@@ -72,6 +72,9 @@ an explicit hard eligibility blocker. JSON output remains valid in the blocker c
 Shared schemas are defined before handlers or analysis behavior. Business logic must remain
 outside CLI handlers and future UI components.
 
+Release maintainers should follow [`docs/releasing.md`](./docs/releasing.md). Package publication is
+separate from building or testing the local workspace.
+
 ## Privacy
 
 RoleProof keeps resume and job data local. Phase 1 has no telemetry, networking, database,

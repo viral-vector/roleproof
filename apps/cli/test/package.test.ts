@@ -21,20 +21,42 @@ describe('@roleproof/cli package export', () => {
   });
 
   it('builds all workspace artifacts before packing any publishable package', () => {
-    const packagePaths = [
-      'apps/cli/package.json',
-      'packages/core/package.json',
-      'packages/parsers/package.json',
-      'packages/reporters/package.json',
-      'packages/shared/package.json',
+    const packages: Array<[packagePath: string, directory: string]> = [
+      ['apps/cli/package.json', 'apps/cli'],
+      ['packages/core/package.json', 'packages/core'],
+      ['packages/parsers/package.json', 'packages/parsers'],
+      ['packages/reporters/package.json', 'packages/reporters'],
+      ['packages/shared/package.json', 'packages/shared'],
     ];
 
-    for (const packagePath of packagePaths) {
+    const rootLicense = readFileSync('LICENSE', 'utf8');
+    for (const [packagePath, directory] of packages) {
       const packageJson = JSON.parse(readFileSync(packagePath, 'utf8')) as {
+        private?: boolean;
+        publishConfig?: { access?: string };
+        repository?: { directory?: string; type?: string; url?: string };
         scripts?: Record<string, string>;
+        version?: string;
       };
       expect(packageJson.scripts?.prepack, packagePath).toBe('pnpm --dir ../.. build');
+      expect(packageJson.version, packagePath).toBe('0.1.0');
+      expect(packageJson.private, packagePath).toBe(false);
+      expect(packageJson.publishConfig, packagePath).toEqual({ access: 'public' });
+      expect(packageJson.repository, packagePath).toEqual({
+        type: 'git',
+        url: 'https://github.com/viral-vector/roleproof.git',
+        directory,
+      });
+      expect(readFileSync(`${directory}/LICENSE`, 'utf8'), packagePath).toBe(rootLicense);
     }
+  });
+
+  it('documents the v0.1.0 release without overstating product outcomes', () => {
+    const changelog = readFileSync('CHANGELOG.md', 'utf8');
+
+    expect(changelog).toContain('## 0.1.0 - 2026-07-28');
+    expect(changelog).toContain('deterministic');
+    expect(changelog).not.toMatch(/interview probability|hiring probability/iu);
   });
 
   it('forces LF checkout line endings for cross-platform formatting', () => {

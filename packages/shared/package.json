@@ -1,7 +1,7 @@
 {
   "name": "@roleproof/shared",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "private": false,
   "description": "Shared RoleProof schemas and domain types",
   "license": "MIT",
   "type": "module",
@@ -16,6 +16,14 @@
   ],
   "engines": {
     "node": ">=22.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/viral-vector/roleproof.git",
+    "directory": "packages/shared"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
