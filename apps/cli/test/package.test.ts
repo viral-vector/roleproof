@@ -36,4 +36,12 @@ describe('@roleproof/cli package export', () => {
       expect(packageJson.scripts?.prepack, packagePath).toBe('pnpm --dir ../.. build');
     }
   });
+
+  it('forces LF checkout line endings for cross-platform formatting', () => {
+    const attributes = readFileSync('.gitattributes', 'utf8');
+
+    expect(attributes).toMatch(/^\* text=auto eol=lf$/mu);
+    expect(attributes).toMatch(/^\*\.cmd text eol=crlf$/mu);
+    expect(attributes).toMatch(/^\*\.bat text eol=crlf$/mu);
+  });
 });
