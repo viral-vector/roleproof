@@ -1,12 +1,14 @@
 # Architecture
 
-## Phase 3 Boundary
+## Phase 4 Boundary
 
-Phase 3 provides local deterministic, evidence-aware analysis with SQLite storage and optional AI
-enhancement. A server and web UI are not implemented. The implemented dependency direction is:
+Phase 4 has started from the local server boundary. RoleProof provides local deterministic,
+evidence-aware analysis with SQLite storage, optional AI enhancement, and a Fastify server
+foundation for the local web UI. The implemented dependency direction is:
 
 ```text
 apps/cli
+  |--> apps/web
   |--> packages/parsers ----|
   |--> packages/core -------|--> packages/shared
   |--> packages/reporters --|
@@ -28,7 +30,14 @@ during builds so packaged analysis does not depend on the caller's working direc
 `apps/cli` owns command parsing, stream routing, report-file writes, and process exit behavior. The
 `analyze` action delegates parsing, analysis, storage, and rendering to their packages. It does not
 match or score evidence. Storage is enabled by default; `--no-store` bypasses storage unless an
-explicit profile requires a read-only profile snapshot.
+explicit profile requires a read-only profile snapshot. The `serve` action starts the local web
+server and does not implement analysis behavior itself.
+
+### Web
+
+`apps/web` owns the local Fastify server foundation for Phase 4. It exposes local API routes without
+requiring accounts, telemetry, or cloud dependencies. Analysis endpoints and UI workflow screens must
+delegate to the same core, parser, reporter, storage, and provider packages used by the CLI.
 
 ### Shared
 
@@ -110,6 +119,6 @@ matches, or blockers.
 
 ## Deferred Architecture
 
-The local API and web UI begin in Phase 4, URL analysis in Phase 5, and automation integrations in
-Phase 6. None is implemented or required to use the deterministic CLI, local storage, or optional
-provider enhancement.
+The complete web UI workflow remains in Phase 4. URL analysis begins in Phase 5, and automation
+integrations begin in Phase 6. None is required to use the deterministic CLI, local storage, or
+optional provider enhancement.

@@ -26,6 +26,16 @@ describe('RoleProof CLI program', () => {
     expect(result.stdout).toContain('Usage: roleproof [options]');
     expect(result.stdout).toContain('Local-first, evidence-based job-fit analysis');
     expect(result.stdout).toContain('-V, --version');
+    expect(result.stdout).toContain('serve');
+    expect(result.stderr).toBe('');
+  });
+
+  it('prints serve help with the default local URL', async () => {
+    const result = await invoke(['serve', '--help']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Start the local RoleProof web UI');
+    expect(result.stdout).toContain('http://localhost:4173');
     expect(result.stderr).toBe('');
   });
 

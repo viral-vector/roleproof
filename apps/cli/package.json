@@ -41,6 +41,7 @@
     "@roleproof/reporters": "workspace:*",
     "@roleproof/shared": "workspace:*",
     "@roleproof/storage": "workspace:*",
+    "@roleproof/web": "workspace:*",
     "commander": "14.0.3",
     "zod": "4.4.3"
   }

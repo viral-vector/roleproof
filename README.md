@@ -6,12 +6,12 @@ inventing experience or presenting a fit score as an interview or hiring probabi
 
 ## Project Status
 
-Phase 3 adds optional evidence-constrained AI enhancement to the deterministic CLI. RoleProof
+Phase 4 has started with a local Fastify server foundation behind `roleproof serve`. RoleProof
 accepts plaintext or PDF resumes and plaintext job descriptions, stores profiles and career
 evidence, retains analysis history, supports full-text search, and renders schema-versioned JSON or
-Markdown.
+Markdown. Phase 3 optional evidence-constrained AI enhancement remains available through the CLI.
 
-Job URL fetching, the local API, and the web UI are not implemented. See
+The complete web UI workflow and job URL fetching are not implemented. See
 [`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the phased product specification.
 
 ## Requirements
@@ -73,6 +73,16 @@ Exit code `3` identifies file or parsing errors. Exit code `4` means provider en
 and the deterministic fallback was returned. Exit code `10` means analysis succeeded but found an
 explicit hard eligibility blocker. JSON output remains valid in both fallback and blocker cases.
 
+## Local Web Server
+
+```powershell
+pnpm exec roleproof serve
+```
+
+The Phase 4 server starts on `http://localhost:4173` by default and exposes local API foundations
+without requiring an account, telemetry, or cloud connection. The full upload/analyze/results UI is
+still in progress.
+
 ## Local Storage
 
 ```powershell
@@ -97,6 +107,7 @@ reports. Permanent deletion is noninteractive and requires `data purge --yes`.
 ## Workspace
 
 - `apps/cli`: Commander-based command-line shell
+- `apps/web`: local Fastify web server foundation
 - `packages/shared`: canonical Zod schemas and inferred TypeScript domain types
 - `packages/core`: deterministic extraction, evidence-aware matching, blockers, scoring, and recommendations
 - `packages/parsers`: bounded plaintext and PDF extraction
