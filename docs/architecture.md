@@ -35,9 +35,14 @@ server and does not implement analysis behavior itself.
 
 ### Web
 
-`apps/web` owns the local Fastify server foundation for Phase 4. It exposes local API routes without
-requiring accounts, telemetry, or cloud dependencies. Analysis endpoints and UI workflow screens must
-delegate to the same core, parser, reporter, storage, and provider packages used by the CLI.
+`apps/web` owns the local Fastify server and Vue/Vite shell for Phase 4. The frontend uses Vue
+Router for local screens, Pinia for client state, a typed local API client, local reusable Vue
+components, and custom CSS token/component layers rather than a visual component framework. It
+exposes local API routes without requiring accounts, telemetry, or cloud dependencies.
+`POST /api/analyze` validates the shared local request schema, parses plaintext through
+`packages/parsers`, delegates matching and scoring to `packages/core`, and returns the canonical
+deterministic analysis envelope. UI workflow screens must delegate to the same core, parser,
+reporter, storage, and provider packages used by the CLI.
 
 ### Shared
 

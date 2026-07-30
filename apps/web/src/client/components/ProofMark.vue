@@ -1,0 +1,27 @@
+<template>
+  <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <rect width="64" height="64" rx="15" fill="#0c233b" />
+    <rect
+      x="2"
+      y="2"
+      width="60"
+      height="60"
+      rx="13"
+      fill="none"
+      stroke="#fffaf1"
+      stroke-opacity=".14"
+    />
+    <path
+      d="M16 13h19c9 0 15 5 15 13.5S44 40 35 40h-8v11H16V13Zm11 9v9h7c4 0 6-1.5 6-4.5S38 22 34 22h-7Z"
+      fill="#fffaf1"
+    />
+    <path
+      d="m31 43 6 6 13-17"
+      fill="none"
+      stroke="#d6a54d"
+      stroke-width="6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>
+</template>

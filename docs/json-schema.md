@@ -56,6 +56,20 @@ interpretations, evidence mappings, confirmation-gated additions, suggestions, a
 provider execution metadata. Provider fallback emits the deterministic `1.0` envelope and exits
 with code `4`. Enhanced `report.show` command output similarly uses command-envelope version `2.0`.
 
+The Phase 4 local API reuses these contracts. `POST /api/analyze` accepts a strict request envelope:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "mode": "deterministic",
+  "resumeText": "Fictional resume text",
+  "jobText": "Fictional job text"
+}
+```
+
+The response is the canonical deterministic analysis envelope version `1.0`; it does not include
+provider settings or `aiEnhancement`.
+
 Important analysis fields include:
 
 - `overallScore`: evidence-based fit from 0 through 100

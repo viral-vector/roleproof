@@ -11,7 +11,8 @@ accepts plaintext or PDF resumes and plaintext job descriptions, stores profiles
 evidence, retains analysis history, supports full-text search, and renders schema-versioned JSON or
 Markdown. Phase 3 optional evidence-constrained AI enhancement remains available through the CLI.
 
-The complete web UI workflow and job URL fetching are not implemented. See
+The browser workflow is currently limited to pasted text and deterministic analysis; job URL
+fetching and the remaining web screens are not implemented. See
 [`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the phased product specification.
 
 ## Requirements
@@ -79,9 +80,16 @@ explicit hard eligibility blocker. JSON output remains valid in both fallback an
 pnpm exec roleproof serve
 ```
 
-The Phase 4 server starts on `http://localhost:4173` by default and exposes local API foundations
-without requiring an account, telemetry, or cloud connection. The full upload/analyze/results UI is
-still in progress.
+The Phase 4 server starts on `http://localhost:4173` by default and exposes a responsive local
+Vue/Vite workspace with Vue Router, Pinia, a RoleProof proof-mark favicon, privacy-visible status
+copy, and no account, telemetry, or cloud connection requirement. The browser Analyze form calls
+`POST /api/analyze`, which accepts schema-versioned résumé/job text and returns the same
+deterministic `1.0` analysis envelope as the CLI. Results keep hard blockers, matched evidence,
+missing requirements, and unsupported claims visible with their truth classifications. File
+upload, AI-enhanced browser mode, exports, history, and settings are still in progress.
+
+The landing page is available at `/`; the focused résumé/job comparison workspace is available at
+`/analyze`.
 
 ## Local Storage
 

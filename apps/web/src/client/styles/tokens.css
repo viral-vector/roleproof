@@ -1,0 +1,31 @@
+:root {
+  --rp-color-ink: #0c233b;
+  --rp-color-ink-soft: #294055;
+  --rp-color-muted: #69727a;
+  --rp-color-canvas: #f3efe6;
+  --rp-color-paper: #fffdf8;
+  --rp-color-panel: rgba(255, 253, 248, 0.9);
+  --rp-color-border: #d8d2c5;
+  --rp-color-border-strong: #b9ad99;
+  --rp-color-accent: #d6a54d;
+  --rp-color-accent-soft: #f3e6c8;
+  --rp-color-primary: #123f63;
+  --rp-color-success: #2f6746;
+  --rp-color-danger: #9b3a32;
+  --rp-radius-sm: 10px;
+  --rp-radius-md: 16px;
+  --rp-radius-lg: 24px;
+  --rp-radius-pill: 999px;
+  --rp-shadow-panel: 0 24px 70px rgba(12, 35, 59, 0.09);
+  --rp-shadow-control: 0 8px 22px rgba(12, 35, 59, 0.08);
+  --rp-font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --rp-space-2: 8px;
+  --rp-space-3: 12px;
+  --rp-space-4: 16px;
+  --rp-space-5: 20px;
+  --rp-space-6: 24px;
+  --rp-space-7: 28px;
+  --rp-space-8: 32px;
+  --rp-space-10: 40px;
+  --rp-width-shell: 1180px;
+}
