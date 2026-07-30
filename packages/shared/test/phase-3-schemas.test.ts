@@ -349,7 +349,7 @@ describe('AI enhancement sidecar compatibility', () => {
     suggestedAdditions: [],
     interviewTopics: [],
     generatedAt: '2026-01-01T00:00:00.000Z',
-    metadata: { mode: 'deterministic', engineVersion: '0.2.0' },
+    metadata: { mode: 'deterministic', engineVersion: '0.3.0' },
   } as const;
 
   it('validates a version 1.0 sidecar and exports its type', () => {

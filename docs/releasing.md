@@ -23,7 +23,7 @@ pnpm build
 pnpm test:cli
 ```
 
-Pack and install the six packages in a temporary directory before publishing. Verify that the
+Pack and install the seven packages in a temporary directory before publishing. Verify that the
 installed `roleproof` executable prints the release version and completes deterministic JSON and
 Markdown analyses without access to the repository source tree.
 
@@ -33,6 +33,7 @@ Publish in dependency order so every workspace dependency is available before th
 
 ```powershell
 pnpm --filter @roleproof/shared publish --access public
+pnpm --filter @roleproof/providers publish --access public
 pnpm --filter @roleproof/storage publish --access public
 pnpm --filter @roleproof/core publish --access public
 pnpm --filter @roleproof/parsers publish --access public
@@ -44,6 +45,7 @@ Confirm the registry versions:
 
 ```powershell
 npm view @roleproof/shared version
+npm view @roleproof/providers version
 npm view @roleproof/storage version
 npm view @roleproof/core version
 npm view @roleproof/parsers version

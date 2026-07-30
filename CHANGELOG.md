@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0 - 2026-07-30
+
+RoleProof's optional AI provider release for evidence-constrained enhancement of deterministic
+analysis.
+
+### Phase 3 Providers
+
+- Added explicit OpenAI and OpenAI-compatible provider support, including Ollama and LM Studio
+  configuration documentation.
+- Added provider health checks, structured output validation, redaction manifests, token/cost usage
+  tracking, and deterministic fallback with exit code `4`.
+- Added enhanced JSON envelope version `2.0` and enhanced Markdown sections while preserving the
+  deterministic Analysis envelope at version `1.0`.
+- Added immutable AI enhancement sidecars and sanitized provider-call audit metadata in SQLite.
+- Kept AI subordinate to evidence: recommendations cite supplied evidence, additions require user
+  confirmation, and deterministic scores, matches, recommendations, and blockers remain unchanged.
+- Preserved local-first privacy: providers are never auto-selected from environment variables,
+  hosted/custom transmission requires explicit confirmation, and provider failures return the
+  deterministic baseline.
+
 ## 0.2.0 - 2026-07-29
 
 RoleProof's local SQLite storage release for the deterministic CLI.

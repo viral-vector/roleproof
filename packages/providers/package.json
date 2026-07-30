@@ -1,6 +1,6 @@
 {
   "name": "@roleproof/providers",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": false,
   "description": "Provider-neutral AI contracts and orchestration for RoleProof",
   "license": "MIT",

@@ -213,7 +213,7 @@ const baseline: AnalysisResult = {
   suggestedAdditions: [],
   interviewTopics: [],
   generatedAt: '2026-01-01T00:00:00.000Z',
-  metadata: { mode: 'deterministic', engineVersion: '0.2.0' },
+  metadata: { mode: 'deterministic', engineVersion: '0.3.0' },
 };
 
 const inputRequirements: JobRequirement[] = [
