@@ -425,12 +425,13 @@ export const AIEnhancementSchema = z
         (execution) =>
           execution.usage.inputTokens === null ||
           execution.usage.outputTokens === null ||
-          execution.usage.totalTokens === null,
+          execution.usage.totalTokens === null ||
+          execution.errorCode !== null,
       )
     ) {
       context.addIssue({
         code: 'custom',
-        message: 'Successful enhancement executions require complete token usage',
+        message: 'Successful enhancement executions require complete token usage and no error code',
         path: ['providerExecutions'],
       });
     }

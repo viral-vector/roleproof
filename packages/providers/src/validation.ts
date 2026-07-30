@@ -53,9 +53,10 @@ const validateRequirementResults = (
     input.requirements.map((item) => [item.requirementId, item.baselineClassification]),
   );
   const evidenceIds = new Set(
-    'evidence' in input
-      ? input.evidence.map((item) => item.evidenceId)
-      : input.requirements.flatMap((item) => item.evidenceIds),
+    'evidence' in input ? input.evidence.map((item) => item.evidenceId) : [],
+  );
+  const requirementEvidence = new Map(
+    input.requirements.map((item) => [item.requirementId, new Set(item.evidenceIds)]),
   );
   if ('evidence' in input)
     assertUniqueEntities(
@@ -67,7 +68,11 @@ const validateRequirementResults = (
     results.some(
       (item) =>
         baseline.get(item.requirementId) !== item.baselineClassification ||
-        item.evidenceIds.some((id) => !evidenceIds.has(id)),
+        item.evidenceIds.some((id) =>
+          'evidence' in input
+            ? !evidenceIds.has(id)
+            : !requirementEvidence.get(item.requirementId)?.has(id),
+        ),
     )
   ) {
     throw new ProviderError('invalid-output', operation);

@@ -317,6 +317,17 @@ describe('provider configuration and deterministic input construction', () => {
     ).toThrowError(ProviderError);
   });
 
+  it('throws a sanitized configuration error for malformed provider base URLs', () => {
+    expect(() =>
+      createProviderConfig({
+        provider: 'openai-compatible',
+        model: 'fictional-model',
+        destination: 'local',
+        baseUrl: 'http://[not-a-host]/secret-fragment',
+      }),
+    ).toThrowError(ProviderError);
+  });
+
   it('builds stable minimal inputs with identical requirements and selected evidence only', () => {
     const first = buildProviderInputs(inputBaseline, inputRequirements, inputEvidence);
     const second = buildProviderInputs(
@@ -511,6 +522,33 @@ describe('provider-neutral contract and validation', () => {
     const provider = new MockProvider();
     provider.analyzeRequirements.mockResolvedValueOnce(
       result('analyze-requirements', output as RequirementAnalysisOutput),
+    );
+
+    await expect(
+      enhanceAnalysis(provider, requirements, evidence, suggestions),
+    ).rejects.toMatchObject({
+      code: 'invalid-output',
+      operation: 'analyze-requirements',
+    });
+    expect(provider.mapEvidence).not.toHaveBeenCalled();
+  });
+
+  it('rejects requirement analysis evidence borrowed from another requirement', async () => {
+    const provider = new MockProvider();
+    provider.analyzeRequirements.mockImplementationOnce((context) =>
+      Promise.resolve(
+        result(
+          'analyze-requirements',
+          {
+            requirements: requirementOutput.requirements.map((item) =>
+              item.requirementId === 'req-2'
+                ? { ...item, classification: 'partially-related' as const, evidenceIds: ['ev-1'] }
+                : item,
+            ),
+          },
+          context.manifest,
+        ),
+      ),
     );
 
     await expect(

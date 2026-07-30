@@ -244,6 +244,31 @@ describe('renderMarkdown', () => {
     expect(rendered).toContain('not direct Kubernetes experience');
     expect(rendered).not.toMatch(/interview probability|hiring probability/i);
   });
+
+  it('keeps untrusted Markdown control text inside list items', () => {
+    const rendered = renderMarkdown(
+      AnalysisResultSchema.parse({
+        ...analysis,
+        hardBlockers: ['Line one\n## Injected heading\n- forged item'],
+        matchedRequirements: [
+          {
+            ...analysis.matchedRequirements[0]!,
+            explanation: 'Supported.\n## Injected match heading',
+          },
+        ],
+        missingRequirements: [
+          { ...analysis.missingRequirements[0]!, text: 'GraphQL\n## Injected missing heading' },
+        ],
+        unsupportedClaims: [],
+        suggestedEmphasis: [],
+        suggestedAdditions: [],
+        interviewTopics: ['TypeScript\n## Injected topic heading'],
+      }),
+    );
+
+    expect(rendered).not.toMatch(/^## Injected/mu);
+    expect(rendered).toContain('Line one ## Injected heading - forged item');
+  });
 });
 
 describe('enhanced reporters', () => {
@@ -308,5 +333,32 @@ describe('enhanced reporters', () => {
     expect(rendered).toContain('Overall score: **68/100**');
     expect(rendered.match(/Overall score:/gu)).toHaveLength(1);
     expect(rendered).not.toContain('Recommendation: **apply**');
+  });
+
+  it('keeps untrusted AI Markdown control text inside list items', () => {
+    const rendered = renderEnhancedMarkdown(analysis, {
+      ...enhancement,
+      requirementAnalysis: {
+        requirements: [
+          {
+            ...enhancement.requirementAnalysis.requirements[0]!,
+            explanation: 'AI text\n## Injected AI heading',
+          },
+        ],
+      },
+      applicationSuggestions: {
+        ...enhancement.applicationSuggestions,
+        suggestedEmphasis: [
+          {
+            ...enhancement.applicationSuggestions.suggestedEmphasis[0]!,
+            text: 'Emphasize containers\n## Injected emphasis heading',
+          },
+        ],
+      },
+    });
+
+    expect(rendered).not.toMatch(/^## Injected AI/mu);
+    expect(rendered).not.toMatch(/^## Injected emphasis/mu);
+    expect(rendered).toContain('AI text ## Injected AI heading');
   });
 });

@@ -63,13 +63,18 @@ export const createProviderConfig = (input: CreateProviderConfigInput): Provider
     ...input.redaction,
     userSelectedTerms: [...(input.redaction?.userSelectedTerms ?? [])],
   };
+  let baseUrl: string | null = null;
+  if (input.baseUrl !== undefined && input.baseUrl !== null) {
+    try {
+      baseUrl = new URL(input.baseUrl).toString().replace(/\/$/u, '');
+    } catch {
+      throw new ProviderError('configuration', 'health-check');
+    }
+  }
   const candidate = {
     provider: input.provider,
     model: input.model,
-    baseUrl:
-      input.baseUrl === undefined || input.baseUrl === null
-        ? null
-        : new URL(input.baseUrl).toString().replace(/\/$/u, ''),
+    baseUrl,
     destination: input.destination,
     requestTimeoutMs: input.requestTimeoutMs ?? DEFAULT_PROVIDER_CONFIG.requestTimeoutMs,
     maxInputChars: input.maxInputChars ?? DEFAULT_PROVIDER_CONFIG.maxInputChars,

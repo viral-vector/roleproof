@@ -366,6 +366,15 @@ describe('AI enhancement sidecar compatibility', () => {
     },
   );
 
+  it('rejects failed provider executions in successful enhancement sidecars', () => {
+    expect(
+      AIEnhancementSchema.safeParse({
+        ...enhancement,
+        providerExecutions: [{ ...execution, errorCode: 'timeout' }],
+      }).success,
+    ).toBe(false);
+  });
+
   it('leaves the Phase 2 AnalysisResult and AnalysisEnvelope 1.0 contracts unchanged', () => {
     expect(AnalysisResultSchema.parse(oldAnalysis)).toEqual(oldAnalysis);
     expect(AnalysisEnvelopeSchema.parse({ schemaVersion: '1.0', analysis: oldAnalysis })).toEqual({

@@ -6,12 +6,16 @@ import {
   type EvidenceMatch,
 } from '@roleproof/shared';
 
+function text(value: string): string {
+  return value.replace(/\s+/gu, ' ').trim();
+}
+
 function renderMatch(match: EvidenceMatch): string {
   const evidence =
     match.evidenceIds.length === 0
       ? 'No evidence cited'
       : `Evidence: ${match.evidenceIds.map((id) => `\`${id}\``).join(', ')}`;
-  return `- \`${match.requirementId}\` [${match.classification}] - ${evidence}. ${match.explanation}`;
+  return `- \`${match.requirementId}\` [${match.classification}] - ${evidence}. ${text(match.explanation)}`;
 }
 
 function renderLines(lines: string[], emptyMessage: string): string {
@@ -45,7 +49,7 @@ export function renderMarkdown(result: AnalysisResult): string {
     '## Eligibility',
     '',
     renderLines(
-      analysis.hardBlockers.map((blocker) => `- **Blocker:** ${blocker}`),
+      analysis.hardBlockers.map((blocker) => `- **Blocker:** ${text(blocker)}`),
       'No hard eligibility blocker was detected from explicit supplied facts.',
     ),
     '',
@@ -70,7 +74,8 @@ export function renderMarkdown(result: AnalysisResult): string {
     '',
     renderLines(
       analysis.missingRequirements.map(
-        (requirement) => `- \`${requirement.id}\` [${requirement.importance}] ${requirement.text}`,
+        (requirement) =>
+          `- \`${requirement.id}\` [${requirement.importance}] ${text(requirement.text)}`,
       ),
       'No missing requirement was identified.',
     ),
@@ -79,7 +84,7 @@ export function renderMarkdown(result: AnalysisResult): string {
     '',
     renderLines(
       analysis.unsupportedClaims.map(
-        (claim) => `- [${claim.classification}] ${claim.text} ${claim.explanation}`,
+        (claim) => `- [${claim.classification}] ${text(claim.text)} ${text(claim.explanation)}`,
       ),
       'No unsupported claim warning was generated.',
     ),
@@ -89,7 +94,7 @@ export function renderMarkdown(result: AnalysisResult): string {
     renderLines(
       analysis.suggestedEmphasis.map(
         (suggestion) =>
-          `- ${suggestion.text} Evidence: ${suggestion.evidenceIds.map((id) => `\`${id}\``).join(', ')}.`,
+          `- ${text(suggestion.text)} Evidence: ${suggestion.evidenceIds.map((id) => `\`${id}\``).join(', ')}.`,
       ),
       'No additional emphasis was generated.',
     ),
@@ -98,7 +103,7 @@ export function renderMarkdown(result: AnalysisResult): string {
     '',
     renderLines(
       analysis.suggestedAdditions.map(
-        (suggestion) => `- [${suggestion.classification}] ${suggestion.text}`,
+        (suggestion) => `- [${suggestion.classification}] ${text(suggestion.text)}`,
       ),
       'No addition requiring confirmation was generated.',
     ),
@@ -106,7 +111,7 @@ export function renderMarkdown(result: AnalysisResult): string {
     '## Interview Talking Points',
     '',
     renderLines(
-      analysis.interviewTopics.map((topic) => `- ${topic}`),
+      analysis.interviewTopics.map((topic) => `- ${text(topic)}`),
       'No interview topic was generated.',
     ),
     '',
@@ -148,7 +153,7 @@ export function renderEnhancedMarkdown(result: AnalysisResult, enhancement: AIEn
     renderLines(
       ai.requirementAnalysis.requirements.map(
         (item) =>
-          `- \`${item.requirementId}\` [baseline: ${item.baselineClassification}; AI interpretation: ${item.classification}] - ${evidenceList(item.evidenceIds)}. ${item.explanation}`,
+          `- \`${item.requirementId}\` [baseline: ${item.baselineClassification}; AI interpretation: ${item.classification}] - ${evidenceList(item.evidenceIds)}. ${text(item.explanation)}`,
       ),
       'No AI requirement interpretation was generated.',
     ),
@@ -158,7 +163,7 @@ export function renderEnhancedMarkdown(result: AnalysisResult, enhancement: AIEn
     renderLines(
       ai.evidenceMapping.mappings.map(
         (item) =>
-          `- \`${item.requirementId}\` [baseline: ${item.baselineClassification}; AI mapping: ${item.classification}] - ${evidenceList(item.evidenceIds)}. ${item.explanation}`,
+          `- \`${item.requirementId}\` [baseline: ${item.baselineClassification}; AI mapping: ${item.classification}] - ${evidenceList(item.evidenceIds)}. ${text(item.explanation)}`,
       ),
       'No AI evidence mapping was generated.',
     ),
@@ -168,7 +173,7 @@ export function renderEnhancedMarkdown(result: AnalysisResult, enhancement: AIEn
     renderLines(
       suggestions.suggestedEmphasis.map(
         (item) =>
-          `- [${item.classification}] ${item.text} ${evidenceList(item.evidenceIds)}. ${item.explanation}`,
+          `- [${item.classification}] ${text(item.text)} ${evidenceList(item.evidenceIds)}. ${text(item.explanation)}`,
       ),
       'No AI emphasis was generated.',
     ),
@@ -178,7 +183,7 @@ export function renderEnhancedMarkdown(result: AnalysisResult, enhancement: AIEn
     renderLines(
       suggestions.suggestedAdditions.map(
         (item) =>
-          `- [${item.classification}] ${item.text} ${evidenceList(item.evidenceIds)}. ${item.explanation}`,
+          `- [${item.classification}] ${text(item.text)} ${evidenceList(item.evidenceIds)}. ${text(item.explanation)}`,
       ),
       'No AI addition was generated.',
     ),
@@ -187,7 +192,8 @@ export function renderEnhancedMarkdown(result: AnalysisResult, enhancement: AIEn
     '',
     renderLines(
       suggestions.interviewTopics.map(
-        (item) => `- ${item.topic} ${evidenceList(item.evidenceIds)}. ${item.rationale}`,
+        (item) =>
+          `- ${text(item.topic)} ${evidenceList(item.evidenceIds)}. ${text(item.rationale)}`,
       ),
       'No AI interview topic was generated.',
     ),
@@ -196,7 +202,7 @@ export function renderEnhancedMarkdown(result: AnalysisResult, enhancement: AIEn
     '',
     renderLines(
       suggestions.coverLetterAngles.map(
-        (item) => `- ${item.text} ${evidenceList(item.evidenceIds)}.`,
+        (item) => `- ${text(item.text)} ${evidenceList(item.evidenceIds)}.`,
       ),
       'No AI cover-letter angle was generated.',
     ),
