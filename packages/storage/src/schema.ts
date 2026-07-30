@@ -100,10 +100,43 @@ export interface AnalysisTable {
 
 export interface ProviderCallTable {
   id: string;
-  analysis_id: string | null;
+  baseline_analysis_id: string | null;
   provider: string;
   model: string | null;
+  operation:
+    'analyze-requirements' | 'map-evidence' | 'suggest-application-changes' | 'health-check';
+  destination: 'hosted' | 'local' | 'custom';
+  endpoint_origin: string | null;
   status: 'succeeded' | 'failed';
+  error_code:
+    | 'auth'
+    | 'rate-limit'
+    | 'timeout'
+    | 'unavailable'
+    | 'refusal'
+    | 'incomplete'
+    | 'invalid-output'
+    | 'budget-exceeded'
+    | 'configuration'
+    | null;
+  redaction_applied: 0 | 1;
+  redaction_categories_json: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  cost_micro_usd: number | null;
+  request_id: string | null;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  created_at: string;
+}
+
+export interface AIEnhancementTable {
+  baseline_analysis_id: string;
+  schema_version: string;
+  config_fingerprint: string;
+  enhancement_json: string;
   created_at: string;
 }
 
@@ -127,6 +160,7 @@ export interface StorageSchema {
   job_requirements: JobRequirementTable;
   analyses: AnalysisTable;
   provider_calls: ProviderCallTable;
+  ai_enhancements: AIEnhancementTable;
   settings: SettingsTable;
   documents_fts: FtsTable & { text: string };
   jobs_fts: FtsTable & { text: string };

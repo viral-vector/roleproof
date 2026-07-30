@@ -20,11 +20,28 @@ describe('@roleproof/cli package export', () => {
     expect(result.stderr).toBe('');
   });
 
+  it('declares the provider package as a publishable CLI runtime dependency', () => {
+    const cliPackage = JSON.parse(readFileSync('apps/cli/package.json', 'utf8')) as {
+      dependencies?: Record<string, string>;
+    };
+    const providerPackage = JSON.parse(readFileSync('packages/providers/package.json', 'utf8')) as {
+      exports?: Record<string, { default?: string; types?: string }>;
+      name?: string;
+    };
+
+    expect(cliPackage.dependencies?.['@roleproof/providers']).toBe('workspace:*');
+    expect(providerPackage).toMatchObject({
+      name: '@roleproof/providers',
+      exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+    });
+  });
+
   it('builds all workspace artifacts before packing any publishable package', () => {
     const packages: Array<[packagePath: string, directory: string]> = [
       ['apps/cli/package.json', 'apps/cli'],
       ['packages/core/package.json', 'packages/core'],
       ['packages/parsers/package.json', 'packages/parsers'],
+      ['packages/providers/package.json', 'packages/providers'],
       ['packages/reporters/package.json', 'packages/reporters'],
       ['packages/shared/package.json', 'packages/shared'],
       ['packages/storage/package.json', 'packages/storage'],

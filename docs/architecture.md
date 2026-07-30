@@ -1,15 +1,16 @@
 # Architecture
 
-## Phase 2 Boundary
+## Phase 3 Boundary
 
-Phase 2 provides local deterministic, evidence-aware analysis with SQLite storage. Providers, a
-server, and a web UI are not implemented. The implemented dependency direction is:
+Phase 3 provides local deterministic, evidence-aware analysis with SQLite storage and optional AI
+enhancement. A server and web UI are not implemented. The implemented dependency direction is:
 
 ```text
 apps/cli
   |--> packages/parsers ----|
   |--> packages/core -------|--> packages/shared
   |--> packages/reporters --|
+  |--> packages/providers --|
   |--> packages/storage --------> packages/shared
 ```
 
@@ -33,7 +34,9 @@ explicit profile requires a read-only profile snapshot.
 
 `packages/shared` defines the public domain contract for candidate profiles, career evidence, job
 requirements, evidence matches, unsupported claims, suggestions, metadata, and analysis results.
-Objects reject unknown fields at the boundary. `AnalysisResult` is fixed to schema version `1.0`.
+Objects reject unknown fields at the boundary. `AnalysisResult` and the deterministic analysis
+envelope remain at schema version `1.0`; the enhanced envelope is version `2.0` and contains the
+unchanged analysis plus a separate AI sidecar.
 
 The score ranges currently represented by schemas are:
 
@@ -45,8 +48,9 @@ Evidence match scores use the specification's canonical values: `direct` is `1`,
 `strongly-related` is `0.75`, `partially-related` is `0.4`, and all unsupported, unknown, or
 confirmation-required classifications are `0`. A supported match must reference evidence IDs.
 
-The CLI JSON envelope is `{ "schemaVersion": "1.0", "analysis": {} }`. JSON stdout contains this
-envelope only, including when a blocker produces exit code `10`.
+Deterministic CLI JSON is `{ "schemaVersion": "1.0", "analysis": {} }`. Enhanced JSON is
+`{ "schemaVersion": "2.0", "analysis": {}, "aiEnhancement": {} }`. JSON stdout contains one
+validated envelope only, including provider fallback and blocker exits.
 
 ### Core
 
@@ -85,6 +89,15 @@ analysis results, evidence references, and Markdown reports. Profile-wide eviden
 analysis only when the caller explicitly supplies `--profile`. `--no-store --profile` opens the
 existing SQLite database read-only so SQLite includes a consistent view of live WAL content.
 
+### Providers
+
+`packages/providers` owns provider-neutral redaction, transmission manifests, operation sequencing,
+strict output/evidence validation, budgets, sanitized errors, and deterministic fallback. OpenAI
+and OpenAI-compatible transport adapters use native `fetch`; provider-specific responses do not
+cross into core. Adapters reject calls that did not pass through the trusted redaction
+orchestrator. AI output is a sidecar and cannot modify deterministic scores, recommendations,
+matches, or blockers.
+
 ## Permanent Boundaries
 
 - Shared Zod schemas define process and package boundaries.
@@ -97,6 +110,6 @@ existing SQLite database read-only so SQLite includes a consistent view of live 
 
 ## Deferred Architecture
 
-Optional AI providers begin in Phase 3, the local API and web UI in Phase 4, URL analysis in Phase
-5, and automation integrations in Phase 6. None of these components is implemented or required to
-use the deterministic CLI and local storage foundation.
+The local API and web UI begin in Phase 4, URL analysis in Phase 5, and automation integrations in
+Phase 6. None is implemented or required to use the deterministic CLI, local storage, or optional
+provider enhancement.

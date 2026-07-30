@@ -44,6 +44,9 @@ importers:
       '@roleproof/parsers':
         specifier: workspace:*
         version: link:../../packages/parsers
+      '@roleproof/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
       '@roleproof/reporters':
         specifier: workspace:*
         version: link:../../packages/reporters
@@ -74,6 +77,12 @@ importers:
       unpdf:
         specifier: 1.8.0
         version: 1.8.0
+
+  packages/providers:
+    dependencies:
+      '@roleproof/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/reporters:
     dependencies:

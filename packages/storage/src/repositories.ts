@@ -20,6 +20,11 @@ import {
 } from './remaining-repositories.js';
 import { createSearchRepository, type SearchRepository } from './search.js';
 import type { CareerEvidenceTable, DocumentTable, ProfileTable, StorageSchema } from './schema.js';
+import {
+  createAIRepositories,
+  type AIEnhancementRepository,
+  type ProviderCallRepository,
+} from './ai-repositories.js';
 
 export const DEFAULT_PROFILE_ID = 'profile-local';
 
@@ -78,6 +83,8 @@ export interface RoleProofRepositories {
   jobs: JobRepository;
   analyses: AnalysisRepository;
   search: SearchRepository;
+  aiEnhancements: AIEnhancementRepository;
+  providerCalls: ProviderCallRepository;
 }
 
 function timestamp(clock: Clock): string {
@@ -551,6 +558,7 @@ export function createRoleProofRepositories(
     },
   };
 
+  const aiRepositories = createAIRepositories(database, clock);
   return {
     profiles,
     documents,
@@ -558,5 +566,6 @@ export function createRoleProofRepositories(
     jobs: createJobRepository(database, clock),
     analyses: createAnalysisRepository(database, clock),
     search: createSearchRepository(database),
+    ...aiRepositories,
   };
 }

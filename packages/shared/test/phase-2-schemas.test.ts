@@ -149,6 +149,46 @@ describe('Phase 2 persistence schemas', () => {
         data: { results: [], extra: true },
       }).success,
     ).toBe(false);
+
+    expect(
+      CommandEnvelopeSchema.parse({
+        schemaVersion: '1.0',
+        command: 'providers.list',
+        data: {
+          providers: [
+            {
+              provider: 'openai-compatible',
+              model: 'fictional-local',
+              destination: 'local',
+              configured: true,
+            },
+          ],
+        },
+      }).command,
+    ).toBe('providers.list');
+    expect(
+      CommandEnvelopeSchema.parse({
+        schemaVersion: '1.0',
+        command: 'providers.test',
+        data: {
+          health: {
+            provider: 'openai-compatible',
+            destination: 'local',
+            status: 'healthy',
+            latencyMs: 4,
+            errorCode: null,
+            message: null,
+          },
+        },
+      }).command,
+    ).toBe('providers.test');
+    expect(
+      CommandEnvelopeSchema.safeParse({
+        schemaVersion: '1.0',
+        command: 'providers.list',
+        data: { providers: [], apiKey: 'secret' },
+      }).success,
+    ).toBe(false);
   });
 
   it('requires exactly one evidence-add mode and a non-empty evidence edit', () => {

@@ -2,6 +2,12 @@ import { z } from 'zod';
 
 import { ParseWarningSchema } from './phase-1-schemas.js';
 import {
+  MAX_PROVIDER_INPUT_ITEMS,
+  ProviderHealthSchema,
+  ProviderSummarySchema,
+  AIEnhancementSchema,
+} from './phase-3-schemas.js';
+import {
   AnalysisResultSchema,
   CandidateProfileSchema,
   CareerEvidenceSchema,
@@ -161,6 +167,8 @@ export const EvidenceRemoveInputSchema = z.object({ evidenceId: nonBlankStringSc
 
 const envelope = <T extends z.ZodType>(command: string, data: T) =>
   z.object({ schemaVersion: z.literal('1.0'), command: z.literal(command), data }).strict();
+const enhancedEnvelope = <T extends z.ZodType>(command: string, data: T) =>
+  z.object({ schemaVersion: z.literal('2.0'), command: z.literal(command), data }).strict();
 
 export const CommandEnvelopeSchema = z.union([
   envelope('init', z.object({ profile: CandidateProfileSchema }).strict()),
@@ -208,8 +216,23 @@ export const CommandEnvelopeSchema = z.union([
       })
       .strict(),
   ),
+  enhancedEnvelope(
+    'report.show',
+    z
+      .object({
+        analysis: AnalysisResultSchema,
+        evidenceReferences: z.array(EvidenceReferenceSchema),
+        aiEnhancement: AIEnhancementSchema,
+      })
+      .strict(),
+  ),
   envelope('history', z.object({ history: z.array(AnalysisHistoryItemSchema) }).strict()),
   envelope('search', z.object({ results: z.array(SearchResultSchema) }).strict()),
+  envelope(
+    'providers.list',
+    z.object({ providers: z.array(ProviderSummarySchema).max(MAX_PROVIDER_INPUT_ITEMS) }).strict(),
+  ),
+  envelope('providers.test', z.object({ health: ProviderHealthSchema }).strict()),
   envelope(
     'data.purge',
     z

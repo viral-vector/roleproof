@@ -1,4 +1,10 @@
-import { AnalysisResultSchema, type AnalysisResult, type EvidenceMatch } from '@roleproof/shared';
+import {
+  EnhancedAnalysisEnvelopeSchema,
+  AnalysisResultSchema,
+  type AIEnhancement,
+  type AnalysisResult,
+  type EvidenceMatch,
+} from '@roleproof/shared';
 
 function renderMatch(match: EvidenceMatch): string {
   const evidence =
@@ -114,5 +120,100 @@ export function renderMarkdown(result: AnalysisResult): string {
     '',
   ];
 
+  return sections.join('\n');
+}
+
+const evidenceList = (evidenceIds: readonly string[]): string =>
+  evidenceIds.length === 0
+    ? 'No evidence cited'
+    : `Evidence: ${evidenceIds.map((id) => `\`${id}\``).join(', ')}`;
+
+export function renderEnhancedMarkdown(result: AnalysisResult, enhancement: AIEnhancement): string {
+  const envelope = EnhancedAnalysisEnvelopeSchema.parse({
+    schemaVersion: '2.0',
+    analysis: result,
+    aiEnhancement: enhancement,
+  });
+  const ai = envelope.aiEnhancement;
+  const suggestions = ai.applicationSuggestions;
+  const executions = ai.providerExecutions;
+  const sections = [
+    renderMarkdown(envelope.analysis),
+    '## AI Enhancement',
+    '',
+    'The deterministic score, recommendation, and blockers are unchanged by AI enhancement.',
+    '',
+    '## AI Requirement Interpretations',
+    '',
+    renderLines(
+      ai.requirementAnalysis.requirements.map(
+        (item) =>
+          `- \`${item.requirementId}\` [baseline: ${item.baselineClassification}; AI interpretation: ${item.classification}] - ${evidenceList(item.evidenceIds)}. ${item.explanation}`,
+      ),
+      'No AI requirement interpretation was generated.',
+    ),
+    '',
+    '## AI Evidence Mappings',
+    '',
+    renderLines(
+      ai.evidenceMapping.mappings.map(
+        (item) =>
+          `- \`${item.requirementId}\` [baseline: ${item.baselineClassification}; AI mapping: ${item.classification}] - ${evidenceList(item.evidenceIds)}. ${item.explanation}`,
+      ),
+      'No AI evidence mapping was generated.',
+    ),
+    '',
+    '## AI Suggested Emphasis',
+    '',
+    renderLines(
+      suggestions.suggestedEmphasis.map(
+        (item) =>
+          `- [${item.classification}] ${item.text} ${evidenceList(item.evidenceIds)}. ${item.explanation}`,
+      ),
+      'No AI emphasis was generated.',
+    ),
+    '',
+    '## AI Suggested Additions',
+    '',
+    renderLines(
+      suggestions.suggestedAdditions.map(
+        (item) =>
+          `- [${item.classification}] ${item.text} ${evidenceList(item.evidenceIds)}. ${item.explanation}`,
+      ),
+      'No AI addition was generated.',
+    ),
+    '',
+    '## AI Interview Topics',
+    '',
+    renderLines(
+      suggestions.interviewTopics.map(
+        (item) => `- ${item.topic} ${evidenceList(item.evidenceIds)}. ${item.rationale}`,
+      ),
+      'No AI interview topic was generated.',
+    ),
+    '',
+    '## AI Cover-Letter Angles',
+    '',
+    renderLines(
+      suggestions.coverLetterAngles.map(
+        (item) => `- ${item.text} ${evidenceList(item.evidenceIds)}.`,
+      ),
+      'No AI cover-letter angle was generated.',
+    ),
+    '',
+    '## Provider Metadata',
+    '',
+    ...executions.flatMap((execution) => [
+      `- Operation: \`${execution.operation}\``,
+      `- Provider/model: \`${execution.provider}\` / \`${execution.model}\``,
+      `- Destination: \`${execution.destination}\``,
+      `- Redaction applied: **${execution.manifest.redactionApplied ? 'yes' : 'no'}**`,
+      `- Redaction replacements: ${execution.manifest.redactionSummary.replacementCount}`,
+      `- Usage: input ${execution.usage.inputTokens ?? 'unknown'}, output ${execution.usage.outputTokens ?? 'unknown'}, total ${execution.usage.totalTokens ?? 'unknown'} tokens; cost ${execution.usage.costMicroUsd ?? 'unknown'} micro-USD`,
+    ]),
+    '',
+    'AI enhancement does not predict interviews, hiring, or other employment outcomes.',
+    '',
+  ];
   return sections.join('\n');
 }

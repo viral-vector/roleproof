@@ -29,10 +29,32 @@ strict command envelope rather than adding fields to the Analysis envelope:
 ```
 
 Command envelope names are `init`, `profile.create`, `profile.show`, `profile.evidence.add`,
-`profile.evidence.edit`, `profile.evidence.remove`, `report.show`, `history`, `search`, and
-`data.purge`. Their `data` values contain the corresponding profile, document, career-evidence,
+`profile.evidence.edit`, `profile.evidence.remove`, `report.show`, `history`, `search`,
+`data.purge`, `providers.list`, and `providers.test`. Their `data` values contain the corresponding
+profile, document, career-evidence,
 analysis-history, search-result, or purge-result schemas. This is additive and does not change
 machine-readable output from `analyze --format json`.
+
+Successful provider enhancement uses a new major envelope so strict `1.0` consumers never mistake
+an enhanced payload for the deterministic contract:
+
+```json
+{
+  "schemaVersion": "2.0",
+  "analysis": {
+    "schemaVersion": "1.0"
+  },
+  "aiEnhancement": {
+    "schemaVersion": "1.0",
+    "baselineAnalysisId": "analysis-id"
+  }
+}
+```
+
+The `analysis` object is the unchanged deterministic result. `aiEnhancement` contains validated
+interpretations, evidence mappings, confirmation-gated additions, suggestions, and sanitized
+provider execution metadata. Provider fallback emits the deterministic `1.0` envelope and exits
+with code `4`. Enhanced `report.show` command output similarly uses command-envelope version `2.0`.
 
 Important analysis fields include:
 

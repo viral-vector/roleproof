@@ -18,4 +18,5 @@ export { purgeStorage } from './purge.js';
 export type { PurgeStorageResult } from './purge.js';
 export { rebuildSearchIndexes } from './search.js';
 export type { SearchRepository } from './search.js';
+export type { AIEnhancementRepository, ProviderCallRepository } from './ai-repositories.js';
 export type { StorageSchema } from './schema.js';

@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { Command, CommanderError } from 'commander';
 
 import { registerAnalyzeCommand } from './commands/analyze.js';
+import { registerProviderCommands } from './commands/providers.js';
 import { registerStorageCommands } from './commands/storage.js';
 import { CliError } from './errors.js';
 
@@ -44,6 +45,7 @@ export function createProgram(output: CliOutput, state: CliState = { exitCode: 0
     });
 
   registerAnalyzeCommand(program, output, state);
+  registerProviderCommands(program, output, state);
   registerStorageCommands(program, output);
 
   return program;

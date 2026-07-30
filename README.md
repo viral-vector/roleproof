@@ -6,11 +6,12 @@ inventing experience or presenting a fit score as an interview or hiring probabi
 
 ## Project Status
 
-Phase 2 adds local SQLite persistence to the deterministic CLI. RoleProof accepts plaintext or PDF
-resumes and plaintext job descriptions, stores profiles and career evidence, retains analysis
-history, supports full-text search, and renders schema-versioned JSON or Markdown.
+Phase 3 adds optional evidence-constrained AI enhancement to the deterministic CLI. RoleProof
+accepts plaintext or PDF resumes and plaintext job descriptions, stores profiles and career
+evidence, retains analysis history, supports full-text search, and renders schema-versioned JSON or
+Markdown.
 
-AI providers, job URL fetching, the local API, and the web UI are not implemented. See
+Job URL fetching, the local API, and the web UI are not implemented. See
 [`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the phased product specification.
 
 ## Requirements
@@ -54,6 +55,11 @@ Supported options include `--format markdown|json|both`, `--out`, `--stdout`, `-
 `--no-store`, `--profile`, salary targets, location, and remote preference. PDF input is supported
 for resumes; job descriptions must be plaintext.
 
+AI is opt-in through an explicit `--provider` and `--model`; environment variables never select a
+provider. Hosted and custom destinations also require `--confirm-transmission`. See
+[`docs/provider-configuration.md`](./docs/provider-configuration.md) for OpenAI, Ollama, LM Studio,
+redaction, limits, health checks, and credential configuration.
+
 Without `--profile`, analysis uses evidence extracted from the supplied resume and stores it under
 the default local profile. Pass an explicit `--profile <id>` to also analyze against all evidence
 stored for that profile. Inferred evidence is confirmation-only, is classified
@@ -63,8 +69,9 @@ Single formats write to stdout unless `--out` is provided. `--format both` write
 `roleproof-analysis.json` and `roleproof-analysis.md` to `--out`, or to the current directory when
 `--out` is omitted. Both formats cannot share stdout because that would invalidate JSON output.
 
-Exit code `3` identifies file or parsing errors. Exit code `10` means analysis succeeded but found
-an explicit hard eligibility blocker. JSON output remains valid in the blocker case.
+Exit code `3` identifies file or parsing errors. Exit code `4` means provider enhancement failed
+and the deterministic fallback was returned. Exit code `10` means analysis succeeded but found an
+explicit hard eligibility blocker. JSON output remains valid in both fallback and blocker cases.
 
 ## Local Storage
 
@@ -94,6 +101,7 @@ reports. Permanent deletion is noninteractive and requires `data purge --yes`.
 - `packages/core`: deterministic extraction, evidence-aware matching, blockers, scoring, and recommendations
 - `packages/parsers`: bounded plaintext and PDF extraction
 - `packages/reporters`: validated JSON and Markdown rendering
+- `packages/providers`: privacy-gated provider orchestration and OpenAI-compatible adapters
 - `packages/storage`: Kysely repositories and migrations backed by `better-sqlite3`
 - `docs`: architecture and engineering documentation
 
@@ -106,10 +114,11 @@ separate from building or testing the local workspace.
 ## Privacy
 
 RoleProof keeps resume, job, profile, evidence, and analysis data in local SQLite storage by
-default. It has no telemetry, provider integration, or network requests. `--no-store` does not
-write analysis content; with an explicit `--profile`, it opens the existing database read-only and
-query-only so SQLite can include committed WAL content. SQLite may temporarily manage WAL/SHM
-coordination files. Files requested with `--out` are report exports, not analysis history.
+default and has no telemetry. Deterministic analysis performs no provider request. An explicitly
+selected provider sends minimized, redacted summaries to the displayed destination only;
+hosted/custom transmission requires confirmation. `--no-store` does not write analysis content;
+with an explicit `--profile`, it opens the existing database read-only and query-only so SQLite can
+include committed WAL content. See [`docs/privacy.md`](./docs/privacy.md) for transmission details.
 
 ## Limitations
 
@@ -131,6 +140,8 @@ coordination files. Files requested with `--out` are report exports, not analysi
 - Scores describe evidence-based fit only and do not predict employer outcomes.
 - Analysis is bounded to 500 semantic requirements and 100 evidence references per match; exceeding
   the requirement limit produces a manual-review result.
+- Pattern redaction is best-effort. Review the transmission preview and use repeatable
+  `--redact-term` values for sensitive text that a pattern may not recognize.
 
 ## License
 

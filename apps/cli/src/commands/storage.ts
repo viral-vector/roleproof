@@ -6,7 +6,7 @@ import {
   normalizeSkillName,
 } from '@roleproof/core';
 import { ParserError, parseDocumentFileWithMetadata } from '@roleproof/parsers';
-import { renderMarkdown } from '@roleproof/reporters';
+import { renderEnhancedMarkdown, renderMarkdown } from '@roleproof/reporters';
 import {
   closeStorage,
   createRoleProofRepositories,
@@ -53,8 +53,13 @@ function databasePath(command: Command): string | undefined {
   return typeof options.db === 'string' ? options.db : undefined;
 }
 
-function writeJson(command: string, data: unknown, output: CliOutput): void {
-  const envelope = CommandEnvelopeSchema.parse({ schemaVersion: '1.0', command, data });
+function writeJson(
+  command: string,
+  data: unknown,
+  output: CliOutput,
+  schemaVersion: '1.0' | '2.0' = '1.0',
+): void {
+  const envelope = CommandEnvelopeSchema.parse({ schemaVersion, command, data });
   output.writeOut(`${JSON.stringify(envelope, null, 2)}\n`);
 }
 
@@ -457,19 +462,27 @@ function registerReadCommands(program: Command, output: CliOutput): void {
       const stored = await withRepositories(command, async (repositories) => {
         const value = await repositories.analyses.get(options.analysis);
         if (value === undefined) throw new CliError(2, 'The requested analysis was not found.');
-        return value;
+        const enhancement = await repositories.aiEnhancements.get(options.analysis);
+        return { ...value, aiEnhancement: enhancement?.enhancement };
       });
       if (format === 'json') {
         writeJson(
           'report.show',
-          { analysis: stored.result, evidenceReferences: stored.evidenceReferences },
+          {
+            analysis: stored.result,
+            evidenceReferences: stored.evidenceReferences,
+            ...(stored.aiEnhancement === undefined ? {} : { aiEnhancement: stored.aiEnhancement }),
+          },
           output,
+          stored.aiEnhancement === undefined ? '1.0' : '2.0',
         );
       } else {
         output.writeOut(
-          stored.report.trim().length > 0
-            ? `${stored.report.trimEnd()}\n`
-            : renderMarkdown(stored.result),
+          stored.aiEnhancement === undefined
+            ? stored.report.trim().length > 0
+              ? `${stored.report.trimEnd()}\n`
+              : renderMarkdown(stored.result)
+            : renderEnhancedMarkdown(stored.result, stored.aiEnhancement),
         );
       }
     });

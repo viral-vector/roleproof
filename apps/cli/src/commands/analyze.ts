@@ -8,7 +8,18 @@ import {
   extractJobRequirements,
 } from '@roleproof/core';
 import { ParserError, parseDocumentFileWithMetadata } from '@roleproof/parsers';
-import { renderJson, renderMarkdown } from '@roleproof/reporters';
+import {
+  buildProviderInputs,
+  enhanceAnalysisWithFallback,
+  providerConfigFingerprint,
+  type AIProvider,
+} from '@roleproof/providers';
+import {
+  renderEnhancedJson,
+  renderEnhancedMarkdown,
+  renderJson,
+  renderMarkdown,
+} from '@roleproof/reporters';
 import {
   closeStorage,
   createRoleProofRepositories,
@@ -25,7 +36,9 @@ import {
   type CandidateContext,
   type CareerEvidence,
   type EvidenceReference,
+  type JobRequirement,
   type ParsedDocument,
+  type ProviderConfig,
   type StoredDocument,
 } from '@roleproof/shared';
 import type { Command } from 'commander';
@@ -34,6 +47,7 @@ import { CliError } from '../errors.js';
 import { writeAnalysisOutput } from '../output.js';
 import type { CliOutput, CliState } from '../program.js';
 import { AnalyzeOptionsSchema, type AnalyzeOptions } from './analyze-options.js';
+import { buildProviderConfig, createConfiguredProvider } from './provider-config.js';
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -174,6 +188,120 @@ async function closeAnalyzeStorage(database: StorageDatabase): Promise<void> {
   }
 }
 
+function collect(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+function writeTransmissionPreview(provider: AIProvider, output: CliOutput): void {
+  const config = provider.config;
+  const redactions = [
+    ...(config.redaction.email ? ['email'] : []),
+    ...(config.redaction.phone ? ['phone'] : []),
+    ...(config.redaction.address ? ['address'] : []),
+    ...(config.redaction.confidentialEmployerNames ? ['confidential-employer-name'] : []),
+    ...(config.redaction.clearanceDetails ? ['clearance-detail'] : []),
+    ...(config.redaction.userSelectedTerms.length > 0 ? ['user-selected-term'] : []),
+  ];
+  output.writeErr(
+    [
+      'RoleProof provider transmission preview:',
+      `Provider: ${config.provider}`,
+      `Model: ${config.model}`,
+      `Destination: ${config.destination}`,
+      `Endpoint origin: ${provider.endpointOrigin}`,
+      'Data categories: job-summary, resume-summary, requirement-text, evidence-summary, baseline-classification',
+      `Redaction categories: ${redactions.join(', ') || 'none'}`,
+      config.destination === 'local'
+        ? 'Career data remains directed to the configured local endpoint.'
+        : 'Career data leaves this machine for the configured endpoint.',
+      '',
+    ].join('\n'),
+  );
+}
+
+async function enhanceBaseline(
+  options: AnalyzeOptions,
+  config: ProviderConfig | undefined,
+  provider: AIProvider | undefined,
+  analysis: ReturnType<typeof analyzeDeterministic>,
+  requirements: JobRequirement[],
+  evidence: CareerEvidence[],
+  output: CliOutput,
+  repositories?: RoleProofRepositories,
+): Promise<{
+  reports: { json: string; markdown: string };
+  providerFailed: boolean;
+}> {
+  if (options.provider === undefined) {
+    return {
+      reports: { json: renderJson(analysis), markdown: renderMarkdown(analysis) },
+      providerFailed: false,
+    };
+  }
+  if (config === undefined) throw new CliError(2, 'Provider configuration is invalid.');
+  const existing = await repositories?.aiEnhancements.get(analysis.id);
+  if (existing !== undefined) {
+    if (existing.configFingerprint !== providerConfigFingerprint(config)) {
+      throw new CliError(5, 'Stored enhancement uses a different provider configuration.');
+    }
+    return {
+      reports: {
+        json: renderEnhancedJson(analysis, existing.enhancement),
+        markdown: renderEnhancedMarkdown(analysis, existing.enhancement),
+      },
+      providerFailed: false,
+    };
+  }
+
+  if (provider === undefined) throw new CliError(2, 'Provider configuration is invalid.');
+  const inputs = buildProviderInputs(analysis, requirements, evidence);
+  writeTransmissionPreview(provider, output);
+  const started = new Date();
+  const result = await enhanceAnalysisWithFallback(
+    analysis,
+    provider,
+    inputs.requirementAnalysis,
+    inputs.evidenceMapping,
+    inputs.applicationSuggestions,
+    [...new Set(evidence.flatMap((item) => (item.employer === undefined ? [] : [item.employer])))],
+  );
+  if (result.enhancement !== undefined) {
+    await repositories?.aiEnhancements.save(result.enhancement, providerConfigFingerprint(config));
+    return {
+      reports: {
+        json: renderEnhancedJson(analysis, result.enhancement),
+        markdown: renderEnhancedMarkdown(analysis, result.enhancement),
+      },
+      providerFailed: false,
+    };
+  }
+
+  const completed = new Date();
+  if (repositories !== undefined && result.error !== undefined) {
+    await repositories.providerCalls.recordFailure({
+      baselineAnalysisId: analysis.id,
+      provider: config.provider,
+      model: config.model,
+      operation: result.error.operation,
+      destination: config.destination,
+      endpointOrigin: provider.endpointOrigin,
+      errorCode: result.error.code,
+      ...(result.failureManifest === undefined ? {} : { manifest: result.failureManifest }),
+      completedExecutions: [...(result.completedExecutions ?? [])],
+      ...(result.failedExecution === undefined ? {} : { failedExecution: result.failedExecution }),
+      requestId: null,
+      startedAt: started.toISOString(),
+      completedAt: completed.toISOString(),
+      durationMs: Math.max(0, completed.getTime() - started.getTime()),
+    });
+  }
+  output.writeErr('RoleProof: provider enhancement failed; using deterministic fallback.\n');
+  return {
+    reports: { json: renderJson(analysis), markdown: renderMarkdown(analysis) },
+    providerFailed: true,
+  };
+}
+
 export function registerAnalyzeCommand(program: Command, output: CliOutput, state: CliState): void {
   program
     .command('analyze')
@@ -190,12 +318,38 @@ export function registerAnalyzeCommand(program: Command, output: CliOutput, stat
     .option('--target-salary-max <number>', 'Candidate maximum annual salary')
     .option('--location <value>', 'Candidate preferred location')
     .option('--remote-preference <value>', 'remote, hybrid, onsite, or any')
+    .option('--provider <provider>', 'Provider: openai or openai-compatible')
+    .option('--model <model>', 'Provider model')
+    .option('--base-url <url>', 'OpenAI-compatible API base URL')
+    .option('--destination <destination>', 'Destination: hosted, local, or custom')
+    .option('--confirm-transmission', 'Confirm hosted or custom career-data transmission')
+    .option('--structured-output-mode <mode>', 'Structured output: json-schema or json-object')
+    .option('--provider-timeout-ms <number>', 'Provider request timeout')
+    .option('--max-input-chars <number>', 'Maximum provider input characters')
+    .option('--max-output-tokens <number>', 'Maximum output tokens')
+    .option('--max-total-tokens <number>', 'Maximum aggregate tokens')
+    .option('--max-cost-usd <number>', 'Maximum provider cost in USD')
+    .option('--input-cost-per-million-usd <number>', 'Input rate per million tokens in USD')
+    .option('--output-cost-per-million-usd <number>', 'Output rate per million tokens in USD')
+    .option('--redact-employer', 'Redact confidential employer names')
+    .option('--redact-clearance', 'Redact clearance details')
+    .option('--redact-term <term>', 'Redact a selected term (repeatable)', collect, [])
     .action(async (rawOptions: unknown, command: Command) => {
       const parsedOptions = AnalyzeOptionsSchema.safeParse(rawOptions);
       if (!parsedOptions.success) {
         throw new CliError(2, parsedOptions.error.issues[0]?.message ?? 'Invalid analyze options.');
       }
       const options = parsedOptions.data;
+      const providerConfig =
+        options.provider === undefined
+          ? undefined
+          : buildProviderConfig({
+              ...options,
+              provider: options.provider,
+              model: options.model!,
+            });
+      const configuredProvider =
+        providerConfig === undefined ? undefined : createConfiguredProvider(providerConfig);
       let database: StorageDatabase | undefined;
 
       try {
@@ -210,12 +364,25 @@ export function registerAnalyzeCommand(program: Command, output: CliOutput, stat
             job: jobFile.document,
             candidateContext: candidateContext(options),
           });
-          await writeAnalysisOutput(
+          const requirements = extractJobRequirements(
+            jobFile.document,
+            DEFAULT_NORMALIZATION_DATA.aliases,
+          ).requirements;
+          const evidence = extractCareerEvidence(
+            resumeFile.document,
+            DEFAULT_NORMALIZATION_DATA.aliases,
+          );
+          const enhanced = await enhanceBaseline(
             options,
-            { json: renderJson(analysis), markdown: renderMarkdown(analysis) },
+            providerConfig,
+            configuredProvider,
+            analysis,
+            requirements,
+            evidence,
             output,
           );
-          state.exitCode = analysis.hardBlockers.length > 0 ? 10 : 0;
+          await writeAnalysisOutput(options, enhanced.reports, output);
+          state.exitCode = enhanced.providerFailed ? 4 : analysis.hardBlockers.length > 0 ? 10 : 0;
           return;
         }
 
@@ -282,11 +449,11 @@ export function registerAnalyzeCommand(program: Command, output: CliOutput, stat
               ];
 
         let analysisJob = jobFile.document;
+        const requirements = extractJobRequirements(
+          jobFile.document,
+          DEFAULT_NORMALIZATION_DATA.aliases,
+        ).requirements;
         if (options.store) {
-          const requirements = extractJobRequirements(
-            jobFile.document,
-            DEFAULT_NORMALIZATION_DATA.aliases,
-          ).requirements;
           const storedJob = await repositories.jobs.save(
             {
               schemaVersion: '1.0',
@@ -319,20 +486,30 @@ export function registerAnalyzeCommand(program: Command, output: CliOutput, stat
           profileId,
           evidence,
         });
-        const reports = { json: renderJson(analysis), markdown: renderMarkdown(analysis) };
+        const baselineReports = { json: renderJson(analysis), markdown: renderMarkdown(analysis) };
         if (options.store && (await repositories.analyses.get(analysis.id)) === undefined) {
           await repositories.analyses.save(
             analysis,
             referencesFor(analysis, evidence, profileFactEvidenceIds(analysisContext)),
-            reports.markdown,
+            baselineReports.markdown,
           );
         }
+        const enhanced = await enhanceBaseline(
+          options,
+          providerConfig,
+          configuredProvider,
+          analysis,
+          requirements,
+          evidence,
+          output,
+          options.store ? repositories : undefined,
+        );
         if (database !== undefined) {
           await closeAnalyzeStorage(database);
           database = undefined;
         }
-        await writeAnalysisOutput(options, reports, output);
-        state.exitCode = analysis.hardBlockers.length > 0 ? 10 : 0;
+        await writeAnalysisOutput(options, enhanced.reports, output);
+        state.exitCode = enhanced.providerFailed ? 4 : analysis.hardBlockers.length > 0 ? 10 : 0;
       } catch (error) {
         if (error instanceof CliError) throw error;
         if (error instanceof ParserError) throw new CliError(3, error.message);

@@ -1,8 +1,10 @@
 # Privacy
 
-RoleProof Phase 2 runs locally and performs no network requests, telemetry, or provider calls.
+RoleProof has no telemetry. Deterministic analysis and `--no-ai` perform no provider request.
 Analysis persists by default to a local SQLite database at `~/.roleproof/roleproof.db`; an absolute
-path can be selected with the global `--db` option.
+path can be selected with the global `--db` option. AI enhancement is optional and transmits data
+only after the user explicitly selects a provider and, for hosted/custom destinations, passes
+`--confirm-transmission`.
 
 ## Inputs
 
@@ -24,8 +26,8 @@ path can be selected with the global `--db` option.
 
 The SQLite database can contain profiles and preferences, parsed resume documents, manual evidence
 notes, career evidence and source text, job descriptions and requirements, complete analysis JSON,
-evidence-reference snapshots, Markdown reports, provider-call metadata reserved by the schema, and
-settings. AI providers are not implemented.
+evidence-reference snapshots, Markdown reports, immutable AI-enhancement sidecars, sanitized
+provider-call metadata, and settings.
 
 FTS5 external-content indexes duplicate searchable text in index structures. This includes resume
 and evidence-note text, job text, career-evidence names, descriptions and source fields, and stored
@@ -40,10 +42,33 @@ analysis report text. SQLite may also create `roleproof.db-wal` and `roleproof.d
   coordination files while producing a consistent view of concurrent committed data.
 - Requested `--out` report exports are still written because they are explicit outputs.
 
+Provider enhancement under `--no-store` does not persist the baseline, sidecar, or provider-call
+metadata. An explicit profile still uses the existing database read-only.
+
+## Provider Transmission
+
+- Provider selection is explicit; API-key environment variables never activate AI.
+- Before a provider call, stderr displays provider, model, destination, endpoint origin, data
+  categories, and enabled redaction categories.
+- OpenAI uses the fixed `https://api.openai.com` origin. A compatible `local` destination must use a
+  loopback host. Hosted and custom compatible endpoints require HTTPS and credentials.
+- Requests contain selected requirement text, deterministic classifications, and minimized evidence,
+  resume, and job summaries. They do not contain an entire stored profile or unrelated evidence.
+- Email, phone, and common address patterns are redacted by default. Employer names, clearance
+  details, and user-selected terms are redacted only when their corresponding options are enabled.
+- Pattern redaction is best-effort and cannot recognize every sensitive value. Use repeatable
+  `--redact-term` options for known sensitive names or phrases and review the preview before consent.
+- Redirects are rejected. Responses are bounded, timed out, and strictly schema validated.
+- No request body, response body, API key, full resume, or full job description is logged or stored
+  as provider-call metadata.
+- Provider failure returns the unchanged deterministic baseline. Successful earlier calls and the
+  failed call's redaction manifest may be stored as sanitized usage/audit metadata when storage is
+  enabled.
+
 ## Purge
 
 `roleproof data purge --yes` permanently removes the selected database and its `-wal` and `-shm`
 sidecars. The explicit `--yes` flag is required; there is no implicit or interactive deletion.
 
-AI providers are not implemented. No local document content can be transmitted to a hosted model
-in Phase 2.
+Purge also removes stored AI sidecars and provider-call metadata because they are contained in the
+selected database.
