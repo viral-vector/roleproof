@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AnalysisEnvelopeSchema } from '@roleproof/shared';
+import { createDocx, createPdf } from '@roleproof/test-utils';
 
 const cliEntryPath = fileURLToPath(new URL('../bin/roleproof.js', import.meta.url));
 const fixtureRoot = fileURLToPath(new URL('../../../fixtures/phase-1/', import.meta.url));
@@ -21,34 +22,6 @@ function invoke(args: string[], cwd?: string) {
 
 function parseJson(value: string): unknown {
   return JSON.parse(value) as unknown;
-}
-
-function escapePdfText(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('(', '\\(').replaceAll(')', '\\)');
-}
-
-function createPdf(text: string): Uint8Array {
-  const content = `BT /F1 12 Tf 72 720 Td (${escapePdfText(text)}) Tj ET`;
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [4 0 R] /Count 1 >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>',
-    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
-  ];
-  let document = '%PDF-1.4\n';
-  const offsets = [0];
-  for (const [index, object] of objects.entries()) {
-    offsets.push(document.length);
-    document += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  }
-  const xrefOffset = document.length;
-  document += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const offset of offsets.slice(1)) {
-    document += `${offset.toString().padStart(10, '0')} 00000 n \n`;
-  }
-  document += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
-  return new TextEncoder().encode(document);
 }
 
 describe('built roleproof analyze executable', () => {
@@ -153,7 +126,7 @@ describe('built roleproof analyze executable', () => {
     const resumePath = join(directory, 'fictional resume.pdf');
     await writeFile(
       resumePath,
-      createPdf('TypeScript Node.js PostgreSQL OAuth2 REST API Team leadership'),
+      createPdf(['TypeScript Node.js PostgreSQL OAuth2 REST API Team leadership']),
     );
     const result = invoke([
       'analyze',
@@ -172,6 +145,35 @@ describe('built roleproof analyze executable', () => {
     expect(result.stderr).toBe('');
     const output = AnalysisEnvelopeSchema.parse(parseJson(result.stdout));
     expect(output.analysis.resumeDocumentId).toMatch(/^resume-/u);
+  });
+
+  it('runs DOCX extraction through the deterministic core', async () => {
+    const resumePath = join(directory, 'fictional resume.docx');
+    await writeFile(
+      resumePath,
+      createDocx([
+        'Fictional Candidate',
+        'Experience: Built production TypeScript APIs with Node.js and PostgreSQL.',
+      ]),
+    );
+    const result = invoke([
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      join(fixtureRoot, 'strong-match', 'job.txt'),
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    const output = AnalysisEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(output.analysis.resumeDocumentId).toMatch(/^resume-/u);
+    expect(output.analysis.matchedRequirements.length).toBeGreaterThan(0);
   });
 
   it('preserves parsing and hard-blocker exit codes', async () => {

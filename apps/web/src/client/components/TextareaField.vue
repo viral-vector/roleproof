@@ -5,6 +5,7 @@ defineProps<{
   label: string;
   help: string;
   placeholder: string;
+  required?: boolean;
   rows?: number;
 }>();
 
@@ -23,12 +24,13 @@ const value = defineModel<string>({ required: true });
       >
     </div>
     <p :id="`${id}-help`">{{ help }}</p>
+    <slot name="before" />
     <textarea
       :id="id"
       v-model="value"
       :aria-describedby="`${id}-help ${id}-count`"
       :placeholder="placeholder"
-      required
+      :required="required ?? true"
       :rows="rows ?? 10"
     />
   </div>

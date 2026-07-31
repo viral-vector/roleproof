@@ -2,13 +2,23 @@ import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import multipart from '@fastify/multipart';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { analyzeDeterministic } from '@roleproof/core';
-import { ParserError, parsePlaintext } from '@roleproof/parsers';
+import {
+  DEFAULT_PARSER_CONFIG,
+  ParserError,
+  parseDocx,
+  parsePdf,
+  parsePlaintext,
+} from '@roleproof/parsers';
 import {
   CandidateContextSchema,
   LocalAnalyzeRequestSchema,
   LocalAnalyzeResponseSchema,
+  LocalResumeParseErrorSchema,
+  LocalResumeParseResponseSchema,
+  LocalResumeUploadMetadataSchema,
 } from '@roleproof/shared';
 
 export const DEFAULT_SERVE_HOST = 'localhost';
@@ -72,6 +82,14 @@ function safeRootAssetPath(uiRoot: string, url: string): string | null {
 
 export function createLocalWebApp(): FastifyInstance {
   const app = Fastify({ logger: false });
+  void app.register(multipart, {
+    limits: {
+      files: 1,
+      fileSize: DEFAULT_PARSER_CONFIG.maxPdfBytes,
+      fields: 0,
+      parts: 1,
+    },
+  });
 
   const sendUiShell = async (_request: FastifyRequest, reply: FastifyReply) => {
     const uiRoot = await resolveUiRoot();
@@ -144,6 +162,60 @@ export function createLocalWebApp(): FastifyInstance {
         return reply.code(400).send({ error: 'Invalid analyze request.' });
       }
       throw error;
+    }
+  });
+
+  app.post('/api/resume/parse', async (request, reply) => {
+    try {
+      const file = await request.file();
+      if (file === undefined || file.fieldname !== 'resume') {
+        return reply.code(400).send({ error: 'Invalid resume file.' });
+      }
+
+      const lowerName = file.filename.toLocaleLowerCase('en-US');
+      const format = lowerName.endsWith('.pdf')
+        ? ('pdf' as const)
+        : lowerName.endsWith('.docx')
+          ? ('docx' as const)
+          : lowerName.endsWith('.txt')
+            ? ('plaintext' as const)
+            : null;
+      if (format === null) return reply.code(400).send({ error: 'Invalid resume file.' });
+
+      const content = await file.toBuffer();
+      LocalResumeUploadMetadataSchema.parse({
+        fileName: file.filename,
+        format,
+        byteLength: content.byteLength,
+      });
+      const document =
+        format === 'pdf'
+          ? await parsePdf(content, 'resume')
+          : format === 'docx'
+            ? await parseDocx(content, 'resume')
+            : parsePlaintext(content, 'resume');
+
+      return reply.send(
+        LocalResumeParseResponseSchema.parse({
+          schemaVersion: '1.0',
+          text: document.text,
+          format: document.format,
+          warnings: document.warnings,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof ParserError) {
+        console.error(`[roleproof] resume parse failed (${error.code}): ${error.message}`);
+        const failure = LocalResumeParseErrorSchema.safeParse({
+          error: 'Invalid resume file.',
+          code: error.code,
+        });
+        return reply
+          .code(400)
+          .send(failure.success ? failure.data : { error: 'Invalid resume file.' });
+      }
+      console.error('[roleproof] resume parse failed with an unexpected error.');
+      return reply.code(400).send({ error: 'Invalid resume file.' });
     }
   });
 

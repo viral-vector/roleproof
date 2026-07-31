@@ -17,6 +17,7 @@ const unitIntervalSchema = z.number().finite().min(0).max(1);
 export const ParseWarningCodeSchema = z.enum([
   'pdf-empty-page',
   'pdf-low-text-content',
+  'docx-low-text-content',
   'possible-truncation',
   'ambiguous-layout',
 ]);
@@ -33,14 +34,14 @@ export const ParsedDocumentSchema = z
     schemaVersion: z.literal('1.0'),
     id: nonBlankStringSchema,
     kind: z.enum(['resume', 'job']),
-    format: z.enum(['plaintext', 'pdf']),
+    format: z.enum(['plaintext', 'pdf', 'docx']),
     text: nonBlankStringSchema,
     confidence: unitIntervalSchema,
     warnings: z.array(ParseWarningSchema),
   })
   .strict()
   .superRefine((document, context) => {
-    if (document.kind === 'job' && document.format === 'pdf') {
+    if (document.kind === 'job' && document.format !== 'plaintext') {
       context.addIssue({
         code: 'custom',
         message: 'Phase 1 job documents must be plaintext',
@@ -208,6 +209,7 @@ export const ParserConfigSchema = z
   .object({
     maxTextBytes: positiveIntegerSchema,
     maxPdfBytes: positiveIntegerSchema,
+    maxDocxBytes: positiveIntegerSchema,
     pdfTimeoutMs: positiveIntegerSchema,
     maxPdfPages: positiveIntegerSchema,
     maxImagePixels: positiveIntegerSchema,

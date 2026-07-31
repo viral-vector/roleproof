@@ -306,7 +306,7 @@ export function registerAnalyzeCommand(program: Command, output: CliOutput, stat
   program
     .command('analyze')
     .description('Analyze a local resume against a local plaintext job description')
-    .requiredOption('--resume <path>', 'Path to a plaintext or PDF resume')
+    .requiredOption('--resume <path>', 'Path to a plaintext, PDF, or DOCX resume')
     .requiredOption('--job <path>', 'Path to a plaintext job description')
     .option('--format <format>', 'Output format: markdown, json, or both', 'markdown')
     .option('--out <directory>', 'Write report files to this directory')

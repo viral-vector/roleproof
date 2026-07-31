@@ -283,6 +283,7 @@ describe('configuration schemas', () => {
       ParserConfigSchema.safeParse({
         maxTextBytes: 1_000_000,
         maxPdfBytes: 10_000_000,
+        maxDocxBytes: 10_000_000,
         pdfTimeoutMs: 10_000,
         maxPdfPages: 50,
         maxImagePixels: 16_777_216,
@@ -295,6 +296,7 @@ describe('configuration schemas', () => {
       ParserConfigSchema.safeParse({
         maxTextBytes: 0,
         maxPdfBytes: Number.POSITIVE_INFINITY,
+        maxDocxBytes: 0,
         pdfTimeoutMs: -1,
         maxPdfPages: 0,
         maxImagePixels: 0,

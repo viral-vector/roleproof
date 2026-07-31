@@ -20,7 +20,7 @@ export interface DocumentTable extends TimestampedTable {
   id: string;
   profile_id: string;
   kind: 'resume' | 'evidence-note';
-  format: 'plaintext' | 'pdf';
+  format: 'plaintext' | 'pdf' | 'docx';
   original_name: string | null;
   content_sha256: string;
   parsed_content_sha256: string;

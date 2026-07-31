@@ -27,7 +27,7 @@ export const StoredDocumentSchema = z
     id: nonBlankStringSchema,
     profileId: nonBlankStringSchema,
     kind: z.enum(['resume', 'evidence-note']),
-    format: z.enum(['plaintext', 'pdf']),
+    format: z.enum(['plaintext', 'pdf', 'docx']),
     originalName: nonBlankStringSchema.optional(),
     contentSha256: sha256Schema,
     parsedContentSha256: sha256Schema,

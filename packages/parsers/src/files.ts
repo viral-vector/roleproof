@@ -5,6 +5,7 @@ import { basename, extname } from 'node:path';
 import { ParserConfigSchema, type ParsedDocument, type ParserConfig } from '@roleproof/shared';
 
 import { DEFAULT_PARSER_CONFIG } from './config.js';
+import { parseDocx } from './docx.js';
 import { ParserError } from './errors.js';
 import { parsePdf } from './pdf.js';
 import { parsePlaintext } from './plaintext.js';
@@ -21,7 +22,8 @@ export async function parseDocumentFileWithMetadata(
   config: ParserConfig = DEFAULT_PARSER_CONFIG,
 ): Promise<ParsedDocumentFile> {
   const isPdf = extname(inputPath).toLocaleLowerCase('en-US') === '.pdf';
-  if (isPdf && kind === 'job') {
+  const isDocx = extname(inputPath).toLocaleLowerCase('en-US') === '.docx';
+  if ((isPdf || isDocx) && kind === 'job') {
     throw new ParserError(
       'unsupported-format',
       `Job input must be a plaintext file: ${inputPath}`,
@@ -45,7 +47,11 @@ export async function parseDocumentFileWithMetadata(
     );
   }
 
-  const byteLimit = isPdf ? validatedConfig.maxPdfBytes : validatedConfig.maxTextBytes;
+  const byteLimit = isPdf
+    ? validatedConfig.maxPdfBytes
+    : isDocx
+      ? validatedConfig.maxDocxBytes
+      : validatedConfig.maxTextBytes;
   if (fileSize > byteLimit) {
     throw new ParserError(
       'size-limit',
@@ -68,7 +74,9 @@ export async function parseDocumentFileWithMetadata(
   try {
     const document = isPdf
       ? await parsePdf(content, kind, validatedConfig)
-      : parsePlaintext(content, kind, validatedConfig);
+      : isDocx
+        ? await parseDocx(content, kind, validatedConfig)
+        : parsePlaintext(content, kind, validatedConfig);
     return {
       document,
       contentSha256: createHash('sha256').update(content).digest('hex'),

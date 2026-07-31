@@ -1,5 +1,6 @@
 export type ParserErrorCode =
   | 'binary-content'
+  | 'docx-error'
   | 'empty-document'
   | 'file-read'
   | 'pdf-error'

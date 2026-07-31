@@ -70,6 +70,27 @@ The Phase 4 local API reuses these contracts. `POST /api/analyze` accepts a stri
 The response is the canonical deterministic analysis envelope version `1.0`; it does not include
 provider settings or `aiEnhancement`.
 
+`POST /api/resume/parse` accepts one multipart field named `resume`. Upload metadata is validated by
+`LocalResumeUploadMetadataSchema`: the safe base filename must end in `.txt`, `.pdf`, or `.docx`;
+plaintext is limited to 1,000,000 bytes, and PDF and DOCX are limited to 10,000,000 bytes each. A
+successful response follows `LocalResumeParseResponseSchema`:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "text": "Fictional extracted resume text",
+  "format": "pdf",
+  "warnings": []
+}
+```
+
+Malformed, unsupported, empty, or oversized files return a content-free error. PDF page, image,
+extracted-text, and timeout limits remain enforced by the canonical parser configuration; DOCX
+extraction is bounded by the same input byte and extracted-text limits. The 400 body is
+`{ "error": "Invalid resume file." }` with an optional `code` field when the parser identifies the
+reason, from `binary-content`, `docx-error`, `empty-document`, `pdf-error`, `pdf-page-limit`,
+`pdf-timeout`, or `size-limit`. The code is content-free: it never echoes file contents.
+
 Important analysis fields include:
 
 - `overallScore`: evidence-based fit from 0 through 100

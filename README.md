@@ -7,12 +7,12 @@ inventing experience or presenting a fit score as an interview or hiring probabi
 ## Project Status
 
 Phase 4 has started with a local Fastify server foundation behind `roleproof serve`. RoleProof
-accepts plaintext or PDF resumes and plaintext job descriptions, stores profiles and career
+accepts plaintext, PDF, or DOCX resumes and plaintext job descriptions, stores profiles and career
 evidence, retains analysis history, supports full-text search, and renders schema-versioned JSON or
 Markdown. Phase 3 optional evidence-constrained AI enhancement remains available through the CLI.
 
-The browser workflow is currently limited to pasted text and deterministic analysis; job URL
-fetching and the remaining web screens are not implemented. See
+The browser workflow is currently limited to pasted text or TXT/PDF/DOCX résumé uploads and
+deterministic analysis; job URL fetching and the remaining web screens are not implemented. See
 [`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the phased product specification.
 
 ## Requirements
@@ -33,6 +33,7 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:e2e
 pnpm build
 pnpm test:cli
 pnpm exec roleproof --help
@@ -53,8 +54,8 @@ pnpm exec roleproof analyze `
 Analysis persists by default to `~/.roleproof/roleproof.db`. Use the global `--db
 <absolute-sqlite-path>` option to select another database, or `--no-store` to avoid persistence.
 Supported options include `--format markdown|json|both`, `--out`, `--stdout`, `--no-ai`,
-`--no-store`, `--profile`, salary targets, location, and remote preference. PDF input is supported
-for resumes; job descriptions must be plaintext.
+`--no-store`, `--profile`, salary targets, location, and remote preference. PDF and DOCX input are
+supported for resumes; job descriptions must be plaintext.
 
 AI is opt-in through an explicit `--provider` and `--model`; environment variables never select a
 provider. Hosted and custom destinations also require `--confirm-transmission`. See
@@ -85,8 +86,11 @@ Vue/Vite workspace with Vue Router, Pinia, a RoleProof proof-mark favicon, priva
 copy, and no account, telemetry, or cloud connection requirement. The browser Analyze form calls
 `POST /api/analyze`, which accepts schema-versioned résumé/job text and returns the same
 deterministic `1.0` analysis envelope as the CLI. Results keep hard blockers, matched evidence,
-missing requirements, and unsupported claims visible with their truth classifications. File
-upload, AI-enhanced browser mode, exports, history, and settings are still in progress.
+missing requirements, unsupported claims, safe résumé emphasis, confirmation-required suggestions,
+and interview topics visible with their truth classifications. JSON and Markdown downloads reuse
+the canonical reporters. The Analyze screen accepts TXT résumés up to 1 MB and PDF/DOCX résumés up
+to 10 MB; selecting a file does not transmit it, and explicit analysis sends it only to the local
+server. AI-enhanced browser mode, history, and settings are still in progress.
 
 The landing page is available at `/`; the focused résumé/job comparison workspace is available at
 `/analyze`.
@@ -118,7 +122,7 @@ reports. Permanent deletion is noninteractive and requires `data purge --yes`.
 - `apps/web`: local Fastify web server foundation
 - `packages/shared`: canonical Zod schemas and inferred TypeScript domain types
 - `packages/core`: deterministic extraction, evidence-aware matching, blockers, scoring, and recommendations
-- `packages/parsers`: bounded plaintext and PDF extraction
+- `packages/parsers`: bounded plaintext, PDF, and DOCX extraction
 - `packages/reporters`: validated JSON and Markdown rendering
 - `packages/providers`: privacy-gated provider orchestration and OpenAI-compatible adapters
 - `packages/storage`: Kysely repositories and migrations backed by `better-sqlite3`

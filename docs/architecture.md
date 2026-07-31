@@ -41,8 +41,13 @@ components, and custom CSS token/component layers rather than a visual component
 exposes local API routes without requiring accounts, telemetry, or cloud dependencies.
 `POST /api/analyze` validates the shared local request schema, parses plaintext through
 `packages/parsers`, delegates matching and scoring to `packages/core`, and returns the canonical
-deterministic analysis envelope. UI workflow screens must delegate to the same core, parser,
-reporter, storage, and provider packages used by the CLI.
+deterministic analysis envelope. `POST /api/resume/parse` accepts one bounded multipart TXT, PDF, or
+DOCX résumé only after explicit analysis, validates upload metadata, and delegates extraction and
+limits to `packages/parsers` without persisting the file. Browser downloads pass the validated
+result to `packages/reporters`; the UI does not duplicate JSON or Markdown rendering. Playwright
+exercises the built local server with fictional inputs and no hosted dependency, including proof
+that file selection alone sends no parse request. UI workflow screens must delegate to the same
+core, parser, reporter, storage, and provider packages used by the CLI.
 
 ### Shared
 
@@ -81,9 +86,10 @@ from the numeric score.
 ### Parsers
 
 `packages/parsers` extracts bounded untrusted document content without assigning career evidence.
-It normalizes plaintext, extracts PDF text, rejects blank or binary-like input, and enforces byte,
-page, image, and timeout limits before or during extraction. PDF.js resources are released after
-completion and on timeout. Phase 2 accepts PDF resumes and plaintext jobs.
+It normalizes plaintext, extracts PDF and DOCX text, rejects blank or binary-like input, and enforces
+byte, page, image, and timeout limits before or during extraction. PDF.js resources are released
+after completion and on timeout. DOCX text is extracted in memory from the ZIP package with no
+external Office process. Jobs accept plaintext only; resumes accept plaintext, PDF, and DOCX.
 
 ### Reporters
 

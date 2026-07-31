@@ -31,8 +31,10 @@
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fastify/multipart": "10.1.0",
     "@roleproof/core": "workspace:*",
     "@roleproof/parsers": "workspace:*",
+    "@roleproof/reporters": "workspace:*",
     "@roleproof/shared": "workspace:*",
     "fastify": "5.6.2",
     "pinia": "3.0.4",
@@ -40,6 +42,7 @@
     "vue-router": "4.6.4"
   },
   "devDependencies": {
+    "@roleproof/test-utils": "workspace:*",
     "@vitejs/plugin-vue": "5.2.4",
     "vite": "6.4.3"
   }

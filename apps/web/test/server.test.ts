@@ -1,8 +1,26 @@
-import { describe, expect, it } from 'vitest';
-import { LocalAnalyzeResponseSchema } from '@roleproof/shared';
+import { describe, expect, it, vi } from 'vitest';
+import { LocalAnalyzeResponseSchema, LocalResumeParseResponseSchema } from '@roleproof/shared';
+import { createDocx, createPdf } from '@roleproof/test-utils';
 
 import { createLocalWebApp, DEFAULT_SERVE_HOST, DEFAULT_SERVE_PORT } from '../src/server.js';
 import type { LocalHealthResponse } from '../src/server.js';
+
+function multipartResume(filename: string, mediaType: string, content: string | Uint8Array) {
+  const boundary = 'roleproof-test-boundary';
+  const prefix = [
+    `--${boundary}`,
+    `Content-Disposition: form-data; name="resume"; filename="${filename}"`,
+    `Content-Type: ${mediaType}`,
+    '',
+    '',
+  ].join('\r\n');
+  const suffix = `\r\n--${boundary}--\r\n`;
+  const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
+  return {
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+    payload: Buffer.concat([Buffer.from(prefix), Buffer.from(bytes), Buffer.from(suffix)]),
+  };
+}
 
 describe('local web server foundation', () => {
   it('serves the local Vue UI shell without requiring a cloud connection', async () => {
@@ -143,6 +161,195 @@ describe('local web server foundation', () => {
 
       expect(response.statusCode).toBe(400);
       expect(body).toEqual({ error: 'Invalid analyze request.' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('extracts a bounded plaintext resume only after an explicit multipart request', async () => {
+    const app = createLocalWebApp();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/resume/parse',
+        ...multipartResume(
+          'fictional resume.txt',
+          'text/plain',
+          'Fictional TypeScript and PostgreSQL experience.',
+        ),
+      });
+      const body = LocalResumeParseResponseSchema.parse(JSON.parse(response.body));
+
+      expect(response.statusCode).toBe(200);
+      expect(body.format).toBe('plaintext');
+      expect(body.text).toContain('Fictional TypeScript');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects unsupported resume uploads without echoing private content', async () => {
+    const app = createLocalWebApp();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/resume/parse',
+        ...multipartResume('fictional resume.rtf', 'application/octet-stream', 'PRIVATE CONTENT'),
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({ error: 'Invalid resume file.' });
+      expect(response.body).not.toContain('PRIVATE CONTENT');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('extracts a fictional DOCX resume through the bounded parser', async () => {
+    const app = createLocalWebApp();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/resume/parse',
+        ...multipartResume(
+          'fictional resume.docx',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          createDocx(['Fictional TypeScript and PostgreSQL experience']),
+        ),
+      });
+      const body = LocalResumeParseResponseSchema.parse(JSON.parse(response.body));
+
+      expect(response.statusCode).toBe(200);
+      expect(body.format).toBe('docx');
+      expect(body.text).toContain('Fictional TypeScript');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects malformed DOCX uploads with a content-free reason code', async () => {
+    const app = createLocalWebApp();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/resume/parse',
+        ...multipartResume(
+          'fictional resume.docx',
+          'application/octet-stream',
+          'PRIVATE MALFORMED DOCX',
+        ),
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({
+        error: 'Invalid resume file.',
+        code: 'docx-error',
+      });
+      expect(response.body).not.toContain('PRIVATE MALFORMED DOCX');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects a DOCX with no readable text using a content-free reason code', async () => {
+    const app = createLocalWebApp();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/resume/parse',
+        ...multipartResume(
+          'fictional resume.docx',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          createDocx([]),
+        ),
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({
+        error: 'Invalid resume file.',
+        code: 'empty-document',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('logs content-free parse failure reasons to stderr', async () => {
+    const app = createLocalWebApp();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      await app.inject({
+        method: 'POST',
+        url: '/api/resume/parse',
+        ...multipartResume(
+          'fictional resume.docx',
+          'application/octet-stream',
+          'PRIVATE MALFORMED DOCX',
+        ),
+      });
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy.mock.calls[0]![0]).toContain('docx-error');
+      expect(errorSpy.mock.calls[0]![0]).not.toContain('PRIVATE MALFORMED DOCX');
+    } finally {
+      errorSpy.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('extracts a fictional PDF resume through the bounded parser', async () => {
+    const app = createLocalWebApp();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/resume/parse',
+        ...multipartResume(
+          'fictional resume.pdf',
+          'application/pdf',
+          createPdf(['Fictional TypeScript and PostgreSQL experience']),
+        ),
+      });
+      const body = LocalResumeParseResponseSchema.parse(JSON.parse(response.body));
+
+      expect(response.statusCode).toBe(200);
+      expect(body.format).toBe('pdf');
+      expect(body.text).toContain('Fictional TypeScript');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects malformed PDFs and oversized plaintext without echoing content', async () => {
+    const app = createLocalWebApp();
+
+    try {
+      const malformed = await app.inject({
+        method: 'POST',
+        url: '/api/resume/parse',
+        ...multipartResume('fictional resume.pdf', 'application/pdf', 'PRIVATE MALFORMED PDF'),
+      });
+      const oversized = await app.inject({
+        method: 'POST',
+        url: '/api/resume/parse',
+        ...multipartResume('fictional resume.txt', 'text/plain', 'x'.repeat(1_000_001)),
+      });
+
+      expect(malformed.statusCode).toBe(400);
+      expect(oversized.statusCode).toBe(400);
+      expect(JSON.parse(malformed.body)).toEqual({
+        error: 'Invalid resume file.',
+        code: 'pdf-error',
+      });
+      expect(JSON.parse(oversized.body)).toEqual({ error: 'Invalid resume file.' });
+      expect(malformed.body).not.toContain('PRIVATE MALFORMED PDF');
+      expect(oversized.body).not.toContain('x'.repeat(100));
     } finally {
       await app.close();
     }

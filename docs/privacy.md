@@ -9,12 +9,19 @@ only after the user explicitly selects a provider and, for hosted/custom destina
 ## Inputs
 
 - Resume and job files are read only after an explicit `analyze` command.
+- Selecting a résumé in the browser does not send or parse it. The file is sent only to the local
+  Fastify server after the user explicitly runs analysis.
 - Parser configuration and filesystem byte size are validated before document content is loaded.
-- PDF and plaintext content is treated as untrusted data, never executable instructions.
+- PDF, DOCX, and plaintext content is treated as untrusted data, never executable instructions.
 - PDF page, image, text, byte, and timeout limits are enforced, and PDF.js resources are destroyed
-  after completion or timeout.
+  after completion or timeout. DOCX extraction is bounded by the same input byte and extracted-text
+  limits and never executes embedded document content.
 - Parser errors identify the input path and corrective action without echoing document contents.
+- The local parse endpoint logs only content-free failure reasons to the server's stderr, such as
+  the parser error code and a static description; uploaded file contents never appear in these
+  lines.
 - Tests and repository fixtures contain fictional data only.
+- Browser uploads are held in memory for parsing and are not persisted by the local parse endpoint.
 
 ## Outputs
 

@@ -17,10 +17,21 @@ describe('local UI structure', () => {
   it('keeps truth classifications and blockers visible in analysis results', async () => {
     const view = await readClientFile('features/analyze/AnalyzeView.vue');
 
-    expect(view).toContain('Matched evidence');
     expect(view).toContain('Missing requirements');
     expect(view).toContain('Unsupported claims');
     expect(view).toContain('Eligibility blockers');
+    expect(view).toContain('Strong matches');
+    expect(view).toContain('Partial matches');
+    expect(view).toContain('Safe résumé emphasis');
+    expect(view).toContain('Suggestions requiring confirmation');
+    expect(view).toContain('Interview topics');
+    expect(view).toContain('Download JSON');
+    expect(view).toContain('Download Markdown');
+    expect(view).toContain('type="file"');
+    expect(view).toContain(
+      'accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"',
+    );
+    expect(view).toContain('Selection stays in your browser until you run analysis.');
     expect(view).toContain(':aria-busy="running"');
   });
 

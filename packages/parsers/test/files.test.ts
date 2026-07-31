@@ -15,6 +15,7 @@ import {
   parseDocumentFile,
   parseDocumentFileWithMetadata,
 } from '../src/index.js';
+import { createDocx } from '@roleproof/test-utils';
 
 describe('parseDocumentFile', () => {
   let directory: string;
@@ -96,6 +97,43 @@ describe('parseDocumentFile', () => {
         maxTextBytes: Number.NaN,
       }),
     ).rejects.toEqual(expect.objectContaining({ name: 'ZodError' }));
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
+  it('routes DOCX resumes through the bounded DOCX parser', async () => {
+    const path = join(directory, 'fictional resume.docx');
+    await writeFile(path, createDocx(['Fictional TypeScript and PostgreSQL experience']));
+
+    const parsed = await parseDocumentFile(path, 'resume');
+
+    expect(parsed.format).toBe('docx');
+    expect(parsed.text).toContain('Fictional TypeScript and PostgreSQL experience');
+  });
+
+  it('rejects DOCX job paths before extraction', async () => {
+    const path = join(directory, 'job.docx');
+    await writeFile(path, createDocx(['Fictional job']));
+
+    await expect(parseDocumentFile(path, 'job')).rejects.toEqual(
+      expect.objectContaining<Partial<ParserError>>({
+        code: 'unsupported-format',
+        inputPath: path,
+      }),
+    );
+  });
+
+  it('rejects an oversized DOCX before loading it into memory', async () => {
+    const path = join(directory, 'oversized-resume.docx');
+    await writeFile(path, createDocx(['Fictional resume']));
+
+    await expect(
+      parseDocumentFile(path, 'resume', { ...DEFAULT_PARSER_CONFIG, maxDocxBytes: 10 }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<ParserError>>({
+        code: 'size-limit',
+        inputPath: path,
+      }),
+    );
     expect(readFile).not.toHaveBeenCalled();
   });
 });
