@@ -31,7 +31,9 @@ during builds so packaged analysis does not depend on the caller's working direc
 `analyze` action delegates parsing, analysis, storage, and rendering to their packages. It does not
 match or score evidence. Storage is enabled by default; `--no-store` bypasses storage unless an
 explicit profile requires a read-only profile snapshot. The `serve` action starts the local web
-server and does not implement analysis behavior itself.
+server and does not implement analysis behavior itself; it opens the selected SQLite database,
+injects the storage repositories and database path into the web app, and closes storage when the
+server shuts down.
 
 ### Web
 
@@ -41,9 +43,16 @@ components, and custom CSS token/component layers rather than a visual component
 exposes local API routes without requiring accounts, telemetry, or cloud dependencies.
 `POST /api/analyze` validates the shared local request schema, parses plaintext through
 `packages/parsers`, delegates matching and scoring to `packages/core`, and returns the canonical
-deterministic analysis envelope. `POST /api/resume/parse` accepts one bounded multipart TXT, PDF, or
-DOCX résumé only after explicit analysis, validates upload metadata, and delegates extraction and
-limits to `packages/parsers` without persisting the file. Browser downloads pass the validated
+deterministic analysis envelope. When storage is available, the route also persists the résumé
+document, extracted evidence, job description, and analysis through `packages/storage` using the
+same stable-ID and deduplication rules as the CLI, so repeated identical analyses keep a single
+history row. `GET /api/history` lists stored analyses or restricts them to full-text search
+matches, `GET /api/history/:id` returns a stored analysis envelope, `DELETE /api/history/:id`
+removes an analysis together with any job description only it references, and `GET`/`PUT
+/api/settings` read and merge-update local settings. Routes that require storage answer `503` when
+the server was started without a database. `POST /api/resume/parse` accepts one bounded multipart
+TXT, PDF, or DOCX résumé only after explicit analysis, validates upload metadata, and delegates
+extraction and limits to `packages/parsers` without persisting the file. Browser downloads pass the validated
 result to `packages/reporters`; the UI does not duplicate JSON or Markdown rendering. Playwright
 exercises the built local server with fictional inputs and no hosted dependency, including proof
 that file selection alone sends no parse request. UI workflow screens must delegate to the same

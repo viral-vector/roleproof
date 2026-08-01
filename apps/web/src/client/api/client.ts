@@ -1,10 +1,16 @@
 import {
   LocalAnalyzeRequestSchema,
   LocalAnalyzeResponseSchema,
+  LocalHistoryListResponseSchema,
   LocalResumeParseErrorSchema,
   LocalResumeParseResponseSchema,
   LocalResumeUploadMetadataSchema,
+  LocalSettingsPatchSchema,
+  LocalSettingsResponseSchema,
+  type LocalHistoryListResponse,
   type LocalResumeParseErrorCode,
+  type LocalSettingsPatch,
+  type LocalSettingsResponse,
 } from '@roleproof/shared';
 import type { LocalAnalyzeResponse, LocalResumeParseResponse } from '@roleproof/shared';
 
@@ -72,6 +78,102 @@ export async function analyzeLocal(
   });
   if (!response.ok) throw new Error('Analysis request failed. Check the supplied text.');
   return LocalAnalyzeResponseSchema.parse(await response.json());
+}
+
+export async function listHistory(
+  query?: string | typeof fetch,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LocalHistoryListResponse> {
+  if (typeof query === 'function') {
+    fetchImpl = query;
+    query = undefined;
+  }
+  const url =
+    query === undefined || query.trim().length === 0
+      ? '/api/history'
+      : `/api/history?query=${encodeURIComponent(query.trim())}`;
+  const response = await fetchImpl(url);
+  if (!response.ok) {
+    throw new Error(
+      response.status === 503
+        ? 'History is unavailable. Local storage is not configured.'
+        : 'History is unavailable. Check the local server and try again.',
+    );
+  }
+  return LocalHistoryListResponseSchema.parse(await response.json());
+}
+
+export async function getHistoryItem(
+  id: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LocalAnalyzeResponse> {
+  const response = await fetchImpl(`/api/history/${encodeURIComponent(id)}`);
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'History item was not found. It may have been removed.'
+        : response.status === 503
+          ? 'History is unavailable. Local storage is not configured.'
+          : 'History is unavailable. Check the local server and try again.',
+    );
+  }
+  return LocalAnalyzeResponseSchema.parse(await response.json());
+}
+
+export async function deleteHistoryItem(
+  id: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ removed: true }> {
+  const response = await fetchImpl(`/api/history/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'History item was not found. It may have been removed.'
+        : response.status === 503
+          ? 'History is unavailable. Local storage is not configured.'
+          : 'History could not be deleted. Check the local server and try again.',
+    );
+  }
+  return { removed: true };
+}
+
+export async function getSettings(fetchImpl: typeof fetch = fetch): Promise<LocalSettingsResponse> {
+  const response = await fetchImpl('/api/settings');
+  if (!response.ok) {
+    throw new Error(
+      response.status === 503
+        ? 'Settings are unavailable. Local storage is not configured.'
+        : 'Settings are unavailable. Check the local server and try again.',
+    );
+  }
+  return LocalSettingsResponseSchema.parse(await response.json());
+}
+
+export async function updateSettings(
+  settings: LocalSettingsPatch,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LocalSettingsResponse> {
+  const parsed = LocalSettingsPatchSchema.safeParse(settings);
+  if (!parsed.success) {
+    throw new Error(
+      'Settings are invalid. Provide a model with a provider, or a base URL for compatible providers.',
+    );
+  }
+  const response = await fetchImpl('/api/settings', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(parsed.data),
+  });
+  if (!response.ok) {
+    throw new Error(
+      response.status === 503
+        ? 'Settings are unavailable. Local storage is not configured.'
+        : 'Settings could not be saved. Check the local server and try again.',
+    );
+  }
+  return LocalSettingsResponseSchema.parse(await response.json());
 }
 
 const GENERIC_RESUME_PARSE_ERROR =

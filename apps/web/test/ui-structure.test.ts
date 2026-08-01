@@ -14,25 +14,32 @@ describe('local UI structure', () => {
     expect(shell).toContain('class="brand-mark"');
   });
 
-  it('keeps truth classifications and blockers visible in analysis results', async () => {
-    const view = await readClientFile('features/analyze/AnalyzeView.vue');
+  it('keeps truth classifications and blockers visible in the shared analysis results', async () => {
+    const results = await readClientFile('components/AnalysisResults.vue');
 
-    expect(view).toContain('Missing requirements');
-    expect(view).toContain('Unsupported claims');
-    expect(view).toContain('Eligibility blockers');
-    expect(view).toContain('Strong matches');
-    expect(view).toContain('Partial matches');
-    expect(view).toContain('Safe résumé emphasis');
-    expect(view).toContain('Suggestions requiring confirmation');
-    expect(view).toContain('Interview topics');
-    expect(view).toContain('Download JSON');
-    expect(view).toContain('Download Markdown');
-    expect(view).toContain('type="file"');
-    expect(view).toContain(
+    expect(results).toContain('Missing requirements');
+    expect(results).toContain('Unsupported claims');
+    expect(results).toContain('Eligibility blockers');
+    expect(results).toContain('Strong matches');
+    expect(results).toContain('Partial matches');
+    expect(results).toContain('Safe résumé emphasis');
+    expect(results).toContain('Suggestions requiring confirmation');
+    expect(results).toContain('Interview topics');
+    expect(results).toContain('Download JSON');
+    expect(results).toContain('Download Markdown');
+  });
+
+  it('keeps file input and analysis submission on the analyze screen only', async () => {
+    const analyze = await readClientFile('features/analyze/AnalyzeView.vue');
+
+    expect(analyze).toContain('type="file"');
+    expect(analyze).toContain(
       'accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"',
     );
-    expect(view).toContain('Selection stays in your browser until you run analysis.');
-    expect(view).toContain(':aria-busy="running"');
+    expect(analyze).toContain('Selection stays in your browser until you run analysis.');
+    expect(analyze).toContain(':aria-busy="running"');
+    expect(analyze).toContain('<AnalysisResults');
+    expect(analyze).not.toContain('Eligibility blockers');
   });
 
   it('separates the landing hero from the analysis comparison workspace', async () => {
@@ -47,5 +54,50 @@ describe('local UI structure', () => {
     expect(home).toContain('to="/analyze"');
     expect(analyze).not.toContain('<section class="hero"');
     expect(analyze).toContain('class="workspace"');
+  });
+
+  it('wires history list, history detail, and settings routes to real views', async () => {
+    const router = await readClientFile('app/router.ts');
+
+    expect(router).toContain("import HistoryView from '../features/history/HistoryView.vue'");
+    expect(router).toContain(
+      "import HistoryDetailView from '../features/history/HistoryDetailView.vue'",
+    );
+    expect(router).toContain("import SettingsView from '../features/settings/SettingsView.vue'");
+    expect(router).toContain("{ path: '/history', component: HistoryView }");
+    expect(router).toContain("{ path: '/history/:id', component: HistoryDetailView }");
+    expect(router).toContain("{ path: '/settings', component: SettingsView }");
+    expect(router).not.toContain('PlaceholderView');
+  });
+
+  it('history view searches stored analyses and can delete them', async () => {
+    const history = await readClientFile('features/history/HistoryView.vue');
+
+    expect(history).toContain('Search history');
+    expect(history).toContain('listHistory');
+    expect(history).toContain('deleteHistoryItem');
+    expect(history).toContain(':to="`/history/${item.id}`"');
+    expect(history).toContain('No stored analyses yet');
+  });
+
+  it('history detail view loads a stored analysis and can delete it', async () => {
+    const detail = await readClientFile('features/history/HistoryDetailView.vue');
+
+    expect(detail).toContain('getHistoryItem');
+    expect(detail).toContain('deleteHistoryItem');
+    expect(detail).toContain('<AnalysisResults');
+    expect(detail).toContain('Analysis was not found');
+    expect(detail).toContain('remains available for future analyses');
+  });
+
+  it('settings view reads and updates stored settings', async () => {
+    const settings = await readClientFile('features/settings/SettingsView.vue');
+
+    expect(settings).toContain('getSettings');
+    expect(settings).toContain('updateSettings');
+    expect(settings).toContain('databasePath');
+    expect(settings).toContain('Redact employer names');
+    expect(settings).toContain('defaultExportFormat');
+    expect(settings).toContain('provider');
   });
 });

@@ -90,6 +90,9 @@ importers:
       '@roleproof/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@roleproof/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       fastify:
         specifier: 5.6.2
         version: 5.6.2

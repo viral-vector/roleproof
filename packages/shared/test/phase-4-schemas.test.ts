@@ -3,12 +3,21 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   LocalAnalyzeRequestSchema,
   LocalAnalyzeResponseSchema,
+  LocalHistoryListResponseSchema,
+  LocalHistoryQuerySchema,
   LocalResumeParseErrorSchema,
   LocalResumeParseResponseSchema,
   LocalResumeUploadMetadataSchema,
+  LocalSettingsPatchSchema,
+  LocalSettingsResponseSchema,
+  LocalSettingsSchema,
   type LocalAnalyzeRequest,
   type LocalAnalyzeResponse,
+  type LocalHistoryListResponse,
   type LocalResumeParseError,
+  type LocalSettings,
+  type LocalSettingsPatch,
+  type LocalSettingsResponse,
 } from '../src/index.js';
 
 describe('Phase 4 local API schemas', () => {
@@ -155,5 +164,157 @@ describe('Phase 4 local API schemas', () => {
         LocalResumeParseErrorSchema.safeParse({ error: 'Invalid resume file.', code }).success,
       ).toBe(true);
     }
+  });
+
+  it('validates local history list responses using the canonical history item', () => {
+    const response = {
+      schemaVersion: '1.0',
+      history: [
+        {
+          schemaVersion: '1.0',
+          id: 'analysis-history-item-1',
+          jobId: 'job-history-item-1',
+          overallScore: 72,
+          recommendation: 'stretch',
+          confidence: 0.8,
+          hasHardBlocker: false,
+          generatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    } as const;
+
+    const parsed = LocalHistoryListResponseSchema.parse(response);
+
+    expect(parsed).toEqual(response);
+    expectTypeOf(parsed).toEqualTypeOf<LocalHistoryListResponse>();
+    expect(LocalHistoryListResponseSchema.parse({ schemaVersion: '1.0', history: [] })).toEqual({
+      schemaVersion: '1.0',
+      history: [],
+    });
+    expect(
+      LocalHistoryListResponseSchema.safeParse({
+        schemaVersion: '1.0',
+        history: [{ ...response.history[0], recommendation: 'maybe' }],
+      }).success,
+    ).toBe(false);
+    expect(
+      LocalHistoryListResponseSchema.safeParse({
+        schemaVersion: '1.0',
+        history: [response.history[0]],
+        extra: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates bounded local history search queries', () => {
+    expect(LocalHistoryQuerySchema.parse({ query: 'TypeScript' })).toEqual({ query: 'TypeScript' });
+    expect(LocalHistoryQuerySchema.parse({ query: '' })).toEqual({ query: '' });
+    expect(LocalHistoryQuerySchema.safeParse({ query: 'x'.repeat(501) }).success).toBe(false);
+    expect(LocalHistoryQuerySchema.parse({})).toEqual({});
+  });
+
+  it('validates optional local settings with provider-consistency rules', () => {
+    const settings = {
+      provider: 'openai-compatible',
+      model: 'fictional-model',
+      destination: 'local',
+      baseUrl: 'http://localhost:11434/v1',
+      redactEmployer: true,
+      redactClearance: false,
+      redactionTerms: ['fictional-client'],
+      defaultExportFormat: 'json',
+      maxTotalTokens: 4096,
+      maxCostUsd: 0.5,
+      providerTimeoutMs: 60_000,
+    } as const;
+
+    const parsed = LocalSettingsSchema.parse(settings);
+
+    expect(parsed).toEqual(settings);
+    expectTypeOf(parsed).toEqualTypeOf<LocalSettings>();
+    expect(LocalSettingsSchema.parse({})).toEqual({});
+    expect(
+      LocalSettingsSchema.safeParse({ provider: 'openai', model: 'fictional-model' }).success,
+    ).toBe(true);
+    expect(
+      LocalSettingsSchema.safeParse({ provider: 'openai-compatible', model: 'fictional-model' })
+        .success,
+    ).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ provider: 'openai' }).success).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ provider: 'openai', model: null }).success).toBe(false);
+    expect(
+      LocalSettingsSchema.safeParse({ provider: 'openai-compatible', baseUrl: null }).success,
+    ).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ provider: null, model: null }).success).toBe(true);
+    expect(LocalSettingsSchema.safeParse({ provider: null }).success).toBe(true);
+    expect(LocalSettingsSchema.safeParse({ baseUrl: null }).success).toBe(true);
+    expect(LocalSettingsSchema.safeParse({ defaultExportFormat: null }).success).toBe(true);
+    expect(LocalSettingsSchema.safeParse({ maxTotalTokens: null }).success).toBe(true);
+    expect(LocalSettingsSchema.safeParse({ maxCostUsd: null }).success).toBe(true);
+    expect(LocalSettingsSchema.safeParse({ providerTimeoutMs: null }).success).toBe(true);
+    expect(LocalSettingsSchema.safeParse({ provider: 'unexpected-provider' }).success).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ maxTotalTokens: 0 }).success).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ maxCostUsd: Number.NaN }).success).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ providerTimeoutMs: 500 }).success).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ redactionTerms: ['   '] }).success).toBe(false);
+    expect(
+      LocalSettingsSchema.safeParse({
+        redactionTerms: Array.from({ length: 51 }, (_, i) => `t${i}`),
+      }).success,
+    ).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ unknownSetting: true }).success).toBe(false);
+  });
+
+  it('validates local settings patches before merge without provider-consistency rules', () => {
+    const patch = LocalSettingsPatchSchema.parse({
+      provider: 'openai-compatible',
+      defaultExportFormat: null,
+      maxTotalTokens: null,
+    });
+
+    expect(patch).toEqual({
+      provider: 'openai-compatible',
+      defaultExportFormat: null,
+      maxTotalTokens: null,
+    });
+    expectTypeOf(patch).toEqualTypeOf<LocalSettingsPatch>();
+    expect(LocalSettingsPatchSchema.safeParse({ provider: 'openai-compatible' }).success).toBe(
+      true,
+    );
+    expect(LocalSettingsPatchSchema.safeParse({ provider: 'openai' }).success).toBe(true);
+    expect(LocalSettingsSchema.safeParse({ provider: 'openai-compatible' }).success).toBe(false);
+    expect(LocalSettingsPatchSchema.safeParse({ provider: 'unexpected-provider' }).success).toBe(
+      false,
+    );
+  });
+
+  it('validates local settings responses with the resolved database path', () => {
+    const response = {
+      schemaVersion: '1.0',
+      settings: { provider: 'openai', model: 'fictional-model' },
+      databasePath: 'C:\\Users\\fictional\\.roleproof\\roleproof.db',
+    } as const;
+
+    const parsed = LocalSettingsResponseSchema.parse(response);
+
+    expect(parsed).toEqual(response);
+    expectTypeOf(parsed).toEqualTypeOf<LocalSettingsResponse>();
+    expect(
+      LocalSettingsResponseSchema.parse({ schemaVersion: '1.0', settings: {}, databasePath: 'x' }),
+    ).toEqual({
+      schemaVersion: '1.0',
+      settings: {},
+      databasePath: 'x',
+    });
+    expect(
+      LocalSettingsResponseSchema.safeParse({
+        schemaVersion: '1.0',
+        settings: { provider: 'openai-compatible' },
+        databasePath: 'x',
+      }).success,
+    ).toBe(false);
+    expect(
+      LocalSettingsResponseSchema.safeParse({ schemaVersion: '1.0', settings: {} }).success,
+    ).toBe(false);
   });
 });

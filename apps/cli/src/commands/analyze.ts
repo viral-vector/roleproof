@@ -3,9 +3,11 @@ import { createHash } from 'node:crypto';
 import {
   analyzeDeterministic,
   analyzeDeterministicWithEvidence,
+  buildEvidenceReferences,
   DEFAULT_NORMALIZATION_DATA,
   extractCareerEvidence,
   extractJobRequirements,
+  profileFactEvidenceIds,
 } from '@roleproof/core';
 import { ParserError, parseDocumentFileWithMetadata } from '@roleproof/parsers';
 import {
@@ -31,11 +33,8 @@ import {
 } from '@roleproof/storage';
 import {
   CandidateContextSchema,
-  EvidenceReferenceSchema,
   type CandidateProfile,
-  type CandidateContext,
   type CareerEvidence,
-  type EvidenceReference,
   type JobRequirement,
   type ParsedDocument,
   type ProviderConfig,
@@ -55,27 +54,6 @@ function sha256(value: string): string {
 
 function stableId(prefix: string, ...parts: string[]): string {
   return `${prefix}-${sha256(parts.join('\0')).slice(0, 24)}`;
-}
-
-function profileFactEvidenceIds(context: CandidateContext): Set<string> {
-  const values: Array<[string, string]> = [
-    ...(context.workAuthorization === undefined
-      ? []
-      : ([['authorization', context.workAuthorization]] as Array<[string, string]>)),
-    ...context.education.map((value): [string, string] => ['education', value]),
-    ...context.certifications.map((value): [string, string] => ['education', value]),
-    ...context.licenses.map((value): [string, string] => ['license', value]),
-    ...context.preferredLocations.map((value): [string, string] => ['location', value]),
-    ...(context.remotePreference === undefined
-      ? []
-      : ([['location', context.remotePreference]] as Array<[string, string]>)),
-    ...context.clearances.map((value): [string, string] => ['clearance', value]),
-  ];
-  return new Set(
-    values.map(
-      ([category, value]) => `evidence-context-${sha256(`${category}\0${value}`).slice(0, 16)}`,
-    ),
-  );
 }
 
 function databasePath(command: Command): string | undefined {
@@ -117,61 +95,6 @@ function parsedResume(document: StoredDocument): ParsedDocument {
     confidence: document.confidence,
     warnings: document.warnings,
   };
-}
-
-function referencesFor(
-  result: {
-    profileId?: string | undefined;
-    resumeDocumentId?: string | undefined;
-    matchedRequirements: { evidenceIds: string[] }[];
-    unsupportedClaims: { evidenceIds: string[] }[];
-    suggestedEmphasis: { evidenceIds: string[] }[];
-    suggestedAdditions: { evidenceIds: string[] }[];
-    scoreContributions: { evidenceIds: string[] }[];
-  },
-  evidence: CareerEvidence[],
-  profileFactIds: Set<string>,
-): EvidenceReference[] {
-  const evidenceById = new Map(evidence.map((item) => [item.id, item]));
-  const citedIds = new Set(
-    [
-      ...result.matchedRequirements,
-      ...result.unsupportedClaims,
-      ...result.suggestedEmphasis,
-      ...result.suggestedAdditions,
-      ...result.scoreContributions,
-    ].flatMap(({ evidenceIds }) => evidenceIds),
-  );
-  return [...citedIds].sort().map((evidenceId) => {
-    const careerEvidence = evidenceById.get(evidenceId);
-    return EvidenceReferenceSchema.parse(
-      careerEvidence === undefined && profileFactIds.has(evidenceId)
-        ? {
-            evidenceId,
-            sourceType: 'profile-fact',
-            sourceId: result.profileId,
-            confidence: 'user-confirmed',
-          }
-        : careerEvidence === undefined
-          ? {
-              evidenceId,
-              sourceType: 'resume-text',
-              sourceId: result.resumeDocumentId,
-              sourceDocumentId: result.resumeDocumentId,
-              confidence: 'explicit',
-            }
-          : {
-              evidenceId,
-              sourceType: 'career-evidence',
-              sourceId: careerEvidence.id,
-              sourceDocumentId: careerEvidence.sourceDocumentId,
-              ...(careerEvidence.sourceText === undefined
-                ? {}
-                : { sourceText: careerEvidence.sourceText }),
-              confidence: careerEvidence.confidence,
-            },
-    );
-  });
 }
 
 async function requireProfile(repositories: RoleProofRepositories, id: string) {
@@ -490,7 +413,7 @@ export function registerAnalyzeCommand(program: Command, output: CliOutput, stat
         if (options.store && (await repositories.analyses.get(analysis.id)) === undefined) {
           await repositories.analyses.save(
             analysis,
-            referencesFor(analysis, evidence, profileFactEvidenceIds(analysisContext)),
+            buildEvidenceReferences(analysis, evidence, profileFactEvidenceIds(analysisContext)),
             baselineReports.markdown,
           );
         }

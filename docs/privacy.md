@@ -40,6 +40,12 @@ FTS5 external-content indexes duplicate searchable text in index structures. Thi
 and evidence-note text, job text, career-evidence names, descriptions and source fields, and stored
 analysis report text. SQLite may also create `roleproof.db-wal` and `roleproof.db-shm` sidecars.
 
+The local web server persists analyzed résumé text, jobs, and analysis reports into the same
+database by default; the browser history screen reads and deletes only that stored data. Deleting a
+history item also removes its job description and requirements when no other stored analysis
+references them. Stored résumé documents and the evidence extracted from them are retained so the
+same résumé can be analyzed against other jobs; history deletion does not remove them.
+
 ## No Store
 
 - `analyze --no-store` without `--profile` does not open or create the database and writes no

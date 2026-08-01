@@ -143,6 +143,17 @@ export interface AIEnhancementTable {
 export interface SettingsTable {
   id: 1;
   default_profile_id: string | null;
+  provider: 'openai' | 'openai-compatible' | null;
+  model: string | null;
+  destination: 'hosted' | 'local' | 'custom' | null;
+  base_url: string | null;
+  default_export_format: 'json' | 'markdown' | null;
+  redact_employer: 0 | 1 | null;
+  redact_clearance: 0 | 1 | null;
+  redaction_terms_json: string | null;
+  max_total_tokens: number | null;
+  max_cost_usd: number | null;
+  provider_timeout_ms: number | null;
   created_at: string;
   updated_at: string;
 }

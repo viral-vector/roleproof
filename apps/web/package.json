@@ -36,6 +36,7 @@
     "@roleproof/parsers": "workspace:*",
     "@roleproof/reporters": "workspace:*",
     "@roleproof/shared": "workspace:*",
+    "@roleproof/storage": "workspace:*",
     "fastify": "5.6.2",
     "pinia": "3.0.4",
     "vue": "3.5.26",

@@ -70,6 +70,62 @@ The Phase 4 local API reuses these contracts. `POST /api/analyze` accepts a stri
 The response is the canonical deterministic analysis envelope version `1.0`; it does not include
 provider settings or `aiEnhancement`.
 
+When the server has storage, analyzed inputs and results are persisted and exposed through history
+routes. `GET /api/history` returns a `LocalHistoryListResponseSchema` envelope:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "history": [
+    {
+      "schemaVersion": "1.0",
+      "id": "analysis-...",
+      "overallScore": 84,
+      "recommendation": "apply",
+      "confidence": 0.92,
+      "hasHardBlocker": false,
+      "generatedAt": "2026-01-01T00:00:00.000Z",
+      "jobId": "job-..."
+    }
+  ]
+}
+```
+
+An optional `query` parameter (at most 500 characters) restricts the list to full-text search
+matches across stored analysis reports; an omitted or empty query returns the stored items.
+`GET /api/history/:id` returns the same canonical envelope as `POST /api/analyze` for a stored
+analysis, and `DELETE /api/history/:id` removes the analysis (and the job description and
+requirements only it references) and answers `{ "removed": true }`. Unknown ids answer `404` with a
+content-free `{ "error" }` body.
+
+`GET /api/settings` and `PUT /api/settings` use `LocalSettingsResponseSchema`:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "settings": {
+    "provider": "openai",
+    "model": "fictional-model",
+    "destination": "hosted",
+    "baseUrl": "http://127.0.0.1:1234/v1",
+    "redactEmployer": false,
+    "redactClearance": false,
+    "redactionTerms": ["project codename"],
+    "defaultExportFormat": "markdown",
+    "maxTotalTokens": 8192,
+    "maxCostUsd": 0.1,
+    "providerTimeoutMs": 30000
+  },
+  "databasePath": "local"
+}
+```
+
+All settings fields are optional in requests; `PUT` accepts any subset and persists a merged
+result. An explicit `null` clears a stored value (the Settings screen uses `null` for "None"). The
+merged settings must still be complete: a configured provider requires a model, and an
+`openai-compatible` provider requires a base URL. Invalid merged settings answer `400`, and
+settings and history routes answer `503` when the server has no storage.
+
 `POST /api/resume/parse` accepts one multipart field named `resume`. Upload metadata is validated by
 `LocalResumeUploadMetadataSchema`: the safe base filename must end in `.txt`, `.pdf`, or `.docx`;
 plaintext is limited to 1,000,000 bytes, and PDF and DOCX are limited to 10,000,000 bytes each. A

@@ -25,6 +25,7 @@ import {
   type AIEnhancementRepository,
   type ProviderCallRepository,
 } from './ai-repositories.js';
+import { createSettingsRepository, type SettingsRepository } from './settings-repository.js';
 
 export const DEFAULT_PROFILE_ID = 'profile-local';
 
@@ -83,6 +84,7 @@ export interface RoleProofRepositories {
   jobs: JobRepository;
   analyses: AnalysisRepository;
   search: SearchRepository;
+  settings: SettingsRepository;
   aiEnhancements: AIEnhancementRepository;
   providerCalls: ProviderCallRepository;
 }
@@ -566,6 +568,7 @@ export function createRoleProofRepositories(
     jobs: createJobRepository(database, clock),
     analyses: createAnalysisRepository(database, clock),
     search: createSearchRepository(database),
+    settings: createSettingsRepository(database, clock),
     ...aiRepositories,
   };
 }

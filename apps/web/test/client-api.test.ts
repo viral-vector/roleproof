@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { analyzeLocal, getHealth, parseResumeFile } from '../src/client/api/client.js';
+import {
+  analyzeLocal,
+  deleteHistoryItem,
+  getHealth,
+  getHistoryItem,
+  getSettings,
+  listHistory,
+  parseResumeFile,
+  updateSettings,
+} from '../src/client/api/client.js';
 
 const jsonResponse = (body: unknown, init: ResponseInit = {}): Response =>
   new Response(JSON.stringify(body), {
@@ -189,6 +198,227 @@ describe('client API contract', () => {
 
     await expect(parseResumeFile(file, fetchImpl)).rejects.toThrow(
       'Local server is out of date. Restart RoleProof and try again.',
+    );
+  });
+});
+
+const historyItem = {
+  schemaVersion: '1.0',
+  id: 'analysis-history-item',
+  profileId: 'profile-local',
+  resumeDocumentId: 'document-resume',
+  jobId: 'job-backend',
+  overallScore: 80,
+  recommendation: 'apply',
+  confidence: 0.8,
+  hasHardBlocker: false,
+  generatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+const analysisEnvelope = {
+  schemaVersion: '1.0',
+  analysis: {
+    schemaVersion: '1.0',
+    id: 'analysis-history-item',
+    overallScore: 80,
+    recommendation: 'apply',
+    confidence: 0.8,
+    hardBlockers: [],
+    matchedRequirements: [],
+    missingRequirements: [],
+    unsupportedClaims: [],
+    suggestedEmphasis: [],
+    suggestedAdditions: [],
+    interviewTopics: [],
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    metadata: { mode: 'deterministic', engineVersion: '0.3.0' },
+  },
+};
+
+describe('history client API', () => {
+  it('lists history without a query', async () => {
+    const { calls, fetchImpl } = fetchStub(
+      jsonResponse({ schemaVersion: '1.0', history: [historyItem] }),
+    );
+
+    await expect(listHistory(fetchImpl)).resolves.toEqual({
+      schemaVersion: '1.0',
+      history: [historyItem],
+    });
+    expect(calls).toEqual([['/api/history', undefined]]);
+  });
+
+  it('lists history with an encoded search query', async () => {
+    const { calls, fetchImpl } = fetchStub(jsonResponse({ schemaVersion: '1.0', history: [] }));
+
+    await expect(listHistory('Node.js Engineer', fetchImpl)).resolves.toEqual({
+      schemaVersion: '1.0',
+      history: [],
+    });
+    expect(calls).toEqual([['/api/history?query=Node.js%20Engineer', undefined]]);
+  });
+
+  it('opens a history item detail and maps a missing item to a content-free error', async () => {
+    const { calls, fetchImpl } = fetchStub(jsonResponse(analysisEnvelope));
+
+    await expect(getHistoryItem('analysis-history-item', fetchImpl)).resolves.toEqual(
+      analysisEnvelope,
+    );
+    expect(calls).toEqual([['/api/history/analysis-history-item', undefined]]);
+
+    const { fetchImpl: missingFetch } = fetchStub(
+      jsonResponse({ error: 'Not found.' }, { status: 404 }),
+    );
+    await expect(getHistoryItem('analysis-history-item', missingFetch)).rejects.toThrow(
+      'History item was not found. It may have been removed.',
+    );
+  });
+
+  it('deletes a history item and rejects unknown ids', async () => {
+    const { calls, fetchImpl } = fetchStub(jsonResponse({ removed: true }));
+
+    await expect(deleteHistoryItem('analysis-history-item', fetchImpl)).resolves.toEqual({
+      removed: true,
+    });
+    expect(calls).toEqual([
+      ['/api/history/analysis-history-item', expect.objectContaining({ method: 'DELETE' })],
+    ]);
+
+    const { fetchImpl: missingFetch } = fetchStub(
+      jsonResponse({ error: 'Not found.' }, { status: 404 }),
+    );
+    await expect(deleteHistoryItem('analysis-history-item', missingFetch)).rejects.toThrow(
+      'History item was not found. It may have been removed.',
+    );
+  });
+
+  it('returns content-free errors for unavailable history', async () => {
+    const { fetchImpl } = fetchStub(
+      jsonResponse({ error: 'History is unavailable.' }, { status: 503 }),
+    );
+
+    await expect(listHistory(fetchImpl)).rejects.toThrow(
+      'History is unavailable. Local storage is not configured.',
+    );
+    await expect(getHistoryItem('analysis-history-item', fetchImpl)).rejects.toThrow(
+      'History is unavailable. Local storage is not configured.',
+    );
+  });
+});
+
+describe('settings client API', () => {
+  it('fetches current settings', async () => {
+    const { calls, fetchImpl } = fetchStub(
+      jsonResponse({ schemaVersion: '1.0', settings: {}, databasePath: 'local' }),
+    );
+
+    await expect(getSettings(fetchImpl)).resolves.toEqual({
+      schemaVersion: '1.0',
+      settings: {},
+      databasePath: 'local',
+    });
+    expect(calls).toEqual([['/api/settings', undefined]]);
+  });
+
+  it('updates settings and validates the response', async () => {
+    const { calls, fetchImpl } = fetchStub(
+      jsonResponse({
+        schemaVersion: '1.0',
+        settings: { provider: 'openai', model: 'fictional-model' },
+        databasePath: 'local',
+      }),
+    );
+
+    await expect(
+      updateSettings({ provider: 'openai', model: 'fictional-model' }, fetchImpl),
+    ).resolves.toEqual({
+      schemaVersion: '1.0',
+      settings: { provider: 'openai', model: 'fictional-model' },
+      databasePath: 'local',
+    });
+    const [url, init] = calls[0]!;
+    expect(url).toBe('/api/settings');
+    expect(init).toMatchObject({ method: 'PUT', headers: { 'content-type': 'application/json' } });
+    expect(JSON.parse(init?.body as string)).toEqual({
+      provider: 'openai',
+      model: 'fictional-model',
+    });
+  });
+
+  it('sends provider-only partial settings updates for server-side merge validation', async () => {
+    const { calls, fetchImpl } = fetchStub(
+      jsonResponse({
+        schemaVersion: '1.0',
+        settings: {
+          provider: 'openai-compatible',
+          model: 'fictional-model',
+          baseUrl: 'http://localhost:11434/v1',
+        },
+        databasePath: 'local',
+      }),
+    );
+
+    await expect(updateSettings({ provider: 'openai-compatible' }, fetchImpl)).resolves.toEqual({
+      schemaVersion: '1.0',
+      settings: {
+        provider: 'openai-compatible',
+        model: 'fictional-model',
+        baseUrl: 'http://localhost:11434/v1',
+      },
+      databasePath: 'local',
+    });
+    const [, init] = calls[0]!;
+    expect(JSON.parse(init?.body as string)).toEqual({ provider: 'openai-compatible' });
+  });
+
+  it('clears stored settings by sending explicit null values', async () => {
+    const { calls, fetchImpl } = fetchStub(
+      jsonResponse({ schemaVersion: '1.0', settings: {}, databasePath: 'local' }),
+    );
+
+    await expect(
+      updateSettings(
+        {
+          provider: null,
+          model: null,
+          defaultExportFormat: null,
+          maxTotalTokens: null,
+          maxCostUsd: null,
+          providerTimeoutMs: null,
+        },
+        fetchImpl,
+      ),
+    ).resolves.toEqual({
+      schemaVersion: '1.0',
+      settings: {},
+      databasePath: 'local',
+    });
+    const [url, init] = calls[0]!;
+    expect(url).toBe('/api/settings');
+    expect(JSON.parse(init?.body as string)).toEqual({
+      provider: null,
+      model: null,
+      defaultExportFormat: null,
+      maxTotalTokens: null,
+      maxCostUsd: null,
+      providerTimeoutMs: null,
+    });
+  });
+
+  it('rejects invalid settings before making a request', async () => {
+    const { calls, fetchImpl } = fetchStub(jsonResponse({ error: 'not used' }));
+
+    await expect(updateSettings({ maxTotalTokens: 0 }, fetchImpl)).rejects.toThrow(
+      'Settings are invalid. Provide a model with a provider, or a base URL for compatible providers.',
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('returns content-free errors when settings cannot be saved', async () => {
+    const { fetchImpl } = fetchStub(jsonResponse({ error: 'PRIVATE CONTENT' }, { status: 500 }));
+
+    await expect(updateSettings({ defaultExportFormat: 'json' }, fetchImpl)).rejects.toThrow(
+      'Settings could not be saved. Check the local server and try again.',
     );
   });
 });

@@ -445,6 +445,50 @@ describe('search API', () => {
   });
 });
 
+describe('analysis deletion', () => {
+  it('removes an analysis together with its orphaned job and requirements', async () => {
+    const { database } = await temporaryStorage();
+    await seedProfileAndDocument(database);
+    const repositories = createRoleProofRepositories(database, () => new Date(now));
+    await repositories.jobs.save(job('job-1', 'a'), [requirement('requirement-1')]);
+    await repositories.analyses.save(analysis('analysis-1', 'job-1'), [], '# Cobalt report');
+
+    const removed = await repositories.analyses.remove('analysis-1');
+
+    expect(removed).toBe(true);
+    expect(await repositories.analyses.get('analysis-1')).toBeUndefined();
+    expect(await repositories.jobs.get('job-1')).toBeUndefined();
+    const requirements = await sql<{ id: string }>`
+      select id from job_requirements where job_id = 'job-1'
+    `.execute(database);
+    expect(requirements.rows).toEqual([]);
+    expect(await repositories.search.search('platform')).toEqual([]);
+  });
+
+  it('keeps a job that is still referenced by another analysis', async () => {
+    const { database } = await temporaryStorage();
+    await seedProfileAndDocument(database);
+    const repositories = createRoleProofRepositories(database, () => new Date(now));
+    await repositories.jobs.save(job('job-1', 'a'), []);
+    await repositories.analyses.save(analysis('analysis-1', 'job-1'), [], '# Cobalt report 1');
+    await repositories.analyses.save(analysis('analysis-2', 'job-1'), [], '# Cobalt report 2');
+
+    await repositories.analyses.remove('analysis-1');
+
+    expect(await repositories.analyses.get('analysis-1')).toBeUndefined();
+    expect(await repositories.jobs.get('job-1')).not.toBeUndefined();
+    expect((await repositories.analyses.listHistory()).map(({ id }) => id)).toEqual(['analysis-2']);
+  });
+
+  it('reports false when the analysis does not exist', async () => {
+    const { database } = await temporaryStorage();
+    await seedProfileAndDocument(database);
+    const { analyses } = createRoleProofRepositories(database, () => new Date(now));
+
+    expect(await analyses.remove('analysis-missing')).toBe(false);
+  });
+});
+
 describe('purgeStorage', () => {
   it('removes exactly the resolved database and sidecars and is idempotent', async () => {
     const { database, path } = await temporaryStorage();

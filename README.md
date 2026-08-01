@@ -11,8 +11,9 @@ accepts plaintext, PDF, or DOCX resumes and plaintext job descriptions, stores p
 evidence, retains analysis history, supports full-text search, and renders schema-versioned JSON or
 Markdown. Phase 3 optional evidence-constrained AI enhancement remains available through the CLI.
 
-The browser workflow is currently limited to pasted text or TXT/PDF/DOCX résumé uploads and
-deterministic analysis; job URL fetching and the remaining web screens are not implemented. See
+The browser workflow supports pasted text or TXT/PDF/DOCX résumé uploads with deterministic
+analysis, stored analysis history with search and detail views, and local settings; job URL
+fetching and AI-enhanced browser mode are not implemented. See
 [`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the phased product specification.
 
 ## Requirements
@@ -90,10 +91,13 @@ missing requirements, unsupported claims, safe résumé emphasis, confirmation-r
 and interview topics visible with their truth classifications. JSON and Markdown downloads reuse
 the canonical reporters. The Analyze screen accepts TXT résumés up to 1 MB and PDF/DOCX résumés up
 to 10 MB; selecting a file does not transmit it, and explicit analysis sends it only to the local
-server. AI-enhanced browser mode, history, and settings are still in progress.
+server. Analyses persist to the same local database the CLI uses: the History screen lists and
+searches stored reports, opens a stored report on its own page, and deletes a report when asked;
+the Settings screen reads and saves local AI, redaction, and output preferences. AI-enhanced
+browser mode is still in progress.
 
 The landing page is available at `/`; the focused résumé/job comparison workspace is available at
-`/analyze`.
+`/analyze`, stored analyses at `/history`, and local settings at `/settings`.
 
 ## Local Storage
 

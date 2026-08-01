@@ -5,4 +5,5 @@ export * from './data.js';
 export * from './extraction.js';
 export * from './matching.js';
 export * from './normalization.js';
+export * from './references.js';
 export * from './scoring.js';

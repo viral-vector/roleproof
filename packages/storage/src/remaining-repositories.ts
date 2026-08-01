@@ -11,6 +11,8 @@ import {
   type StoredJob,
 } from '@roleproof/shared';
 
+export type { AnalysisHistoryItem } from '@roleproof/shared';
+
 import type { StorageDatabase } from './database.js';
 import { StorageError } from './errors.js';
 import type { AnalysisTable, JobRequirementTable, JobTable } from './schema.js';
@@ -38,6 +40,7 @@ export interface AnalysisRepository {
   ): Promise<StoredAnalysis>;
   get(id: string): Promise<StoredAnalysis | undefined>;
   listHistory(profileId?: string): Promise<AnalysisHistoryItem[]>;
+  remove(id: string): Promise<boolean>;
 }
 
 function validate<T>(label: string, parse: () => T): T {
@@ -91,7 +94,10 @@ function toStoredAnalysis(row: AnalysisTable): StoredAnalysis {
 }
 
 function toHistory(row: AnalysisTable): AnalysisHistoryItem {
-  const result = AnalysisResultSchema.parse(JSON.parse(row.result_json));
+  return toAnalysisHistoryItem(AnalysisResultSchema.parse(JSON.parse(row.result_json)));
+}
+
+export function toAnalysisHistoryItem(result: AnalysisResult): AnalysisHistoryItem {
   return AnalysisHistoryItemSchema.parse({
     schemaVersion: result.schemaVersion,
     id: result.id,
@@ -327,6 +333,33 @@ export function createAnalysisRepository(
         return rows.map(toHistory);
       } catch (cause) {
         fail('list analysis history', cause);
+      }
+    },
+
+    async remove(id) {
+      try {
+        const row = await database
+          .selectFrom('analyses')
+          .select(['id', 'job_id'])
+          .where('id', '=', id)
+          .executeTakeFirst();
+        if (row === undefined) return false;
+        await database.transaction().execute(async (transaction) => {
+          await transaction.deleteFrom('analyses').where('id', '=', id).execute();
+          if (row.job_id !== null) {
+            const remaining = await transaction
+              .selectFrom('analyses')
+              .select('id')
+              .where('job_id', '=', row.job_id)
+              .executeTakeFirst();
+            if (remaining === undefined) {
+              await transaction.deleteFrom('jobs').where('id', '=', row.job_id).execute();
+            }
+          }
+        });
+        return true;
+      } catch (cause) {
+        fail('remove analysis', cause);
       }
     },
   };

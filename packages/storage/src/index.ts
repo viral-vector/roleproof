@@ -8,6 +8,10 @@ export type {
   JobRepository,
   StoredAnalysis,
 } from './remaining-repositories.js';
+export { toAnalysisHistoryItem } from './remaining-repositories.js';
+export type { AnalysisHistoryItem } from './remaining-repositories.js';
+export { createSettingsRepository } from './settings-repository.js';
+export type { SettingsRepository } from './settings-repository.js';
 export type {
   CareerEvidenceRepository,
   DocumentRepository,
