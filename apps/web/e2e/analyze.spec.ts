@@ -81,6 +81,72 @@ test('uploads a fictional DOCX resume and produces deterministic results', async
   await expect(page.getByRole('heading', { name: 'Strong matches' })).toBeVisible();
 });
 
+test('downloads prefer the saved default export format', async ({ page }) => {
+  const save = await page.request.put('/api/settings', {
+    data: { defaultExportFormat: 'markdown' },
+  });
+  expect(save.ok()).toBeTruthy();
+
+  await page.goto('/analyze');
+  await page.getByLabel('Resume text').fill(resumeText);
+  await page.getByLabel('Job description').fill(jobText);
+  await page.getByRole('button', { name: 'Analyze role fit' }).click();
+  await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
+
+  const exportButtons = page.getByRole('button', { name: /Download (JSON|Markdown)/u });
+  await expect(exportButtons).toHaveCount(2);
+  await expect(exportButtons.nth(0)).toHaveText('Download Markdown');
+
+  const markdownDownloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download Markdown' }).click();
+  const markdownDownload = await markdownDownloadPromise;
+  expect(markdownDownload.suggestedFilename()).toBe('roleproof-analysis.md');
+
+  const reset = await page.request.put('/api/settings', {
+    data: { defaultExportFormat: null },
+  });
+  expect(reset.ok()).toBeTruthy();
+});
+
+test('waits for the saved export format before enabling downloads', async ({ page }) => {
+  const save = await page.request.put('/api/settings', {
+    data: { defaultExportFormat: 'markdown' },
+  });
+  expect(save.ok()).toBeTruthy();
+
+  let releaseSettings = () => {};
+  const settingsGate = new Promise<void>((resolve) => {
+    releaseSettings = resolve;
+  });
+  await page.route('**/api/settings', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.continue();
+      return;
+    }
+    await settingsGate;
+    await route.continue();
+  });
+
+  await page.goto('/analyze');
+  await page.getByLabel('Resume text').fill(resumeText);
+  await page.getByLabel('Job description').fill(jobText);
+  await page.getByRole('button', { name: 'Analyze role fit' }).click();
+  await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
+
+  await expect(page.getByText('Loading export preferences...')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Download (JSON|Markdown)/u })).toHaveCount(0);
+
+  releaseSettings();
+  const exportButtons = page.getByRole('button', { name: /Download (JSON|Markdown)/u });
+  await expect(exportButtons).toHaveCount(2);
+  await expect(exportButtons.nth(0)).toHaveText('Download Markdown');
+
+  const reset = await page.request.put('/api/settings', {
+    data: { defaultExportFormat: null },
+  });
+  expect(reset.ok()).toBeTruthy();
+});
+
 test('shows an actionable message when the resume file cannot be parsed', async ({ page }) => {
   await page.goto('/analyze');
 

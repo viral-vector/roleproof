@@ -25,8 +25,7 @@ describe('local UI structure', () => {
     expect(results).toContain('Safe résumé emphasis');
     expect(results).toContain('Suggestions requiring confirmation');
     expect(results).toContain('Interview topics');
-    expect(results).toContain('Download JSON');
-    expect(results).toContain('Download Markdown');
+    expect(results).toContain('exportFormats');
     expect(results).toContain('AI-enhanced guidance');
     expect(results).toContain('Deterministic fallback');
     expect(results).toContain('Validated AI Output');
@@ -43,6 +42,15 @@ describe('local UI structure', () => {
     expect(results).toContain('Provider Metadata');
     expect(results).toContain('aiEnhancement!.providerExecutions');
     expect(results).toContain('downloadAnalysis(props.response, format)');
+  });
+
+  it('orders export downloads by the saved default export format', async () => {
+    const results = await readClientFile('components/AnalysisResults.vue');
+
+    expect(results).toContain('getSettings');
+    expect(results).toContain('orderedExportFormats');
+    expect(results).toContain('export-button-primary');
+    expect(results).toContain('Download {{ format === \'json\' ? \'JSON\' : \'Markdown\' }}');
   });
 
   it('keeps file input and analysis submission on the analyze screen only', async () => {

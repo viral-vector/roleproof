@@ -882,6 +882,27 @@ textarea::placeholder {
   color: var(--rp-color-primary);
 }
 
+.export-button-primary {
+  border-color: var(--rp-color-primary);
+  background: var(--rp-color-primary);
+  color: #fff;
+}
+
+.export-button-primary:hover {
+  border-color: var(--rp-color-ink);
+  background: var(--rp-color-ink);
+  color: #fff;
+}
+
+.export-loading {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--rp-color-ink-soft);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .result-overview {
   display: grid;
   grid-template-columns: minmax(240px, 0.75fr) minmax(0, 1.4fr);

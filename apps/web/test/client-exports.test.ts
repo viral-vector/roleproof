@@ -6,7 +6,7 @@ import {
   type EnhancedAnalysisEnvelope,
 } from '@roleproof/shared';
 
-import { createAnalysisDownload } from '../src/client/exports/download.js';
+import { createAnalysisDownload, orderedExportFormats } from '../src/client/exports/download.js';
 import { renderEnhancedMarkdown } from '@roleproof/reporters';
 
 const analysis = AnalysisResultSchema.parse({
@@ -203,5 +203,20 @@ describe('local analysis downloads', () => {
     const markdown = renderEnhancedMarkdown(enhancement.analysis, enhancement.aiEnhancement);
     expect(markdown).toContain('## AI Requirement Interpretations');
     expect(markdown).toContain('## Provider Metadata');
+  });
+});
+
+describe('ordered export formats', () => {
+  it('keeps JSON first when no default format is saved', () => {
+    expect(orderedExportFormats(null)).toEqual(['json', 'markdown']);
+    expect(orderedExportFormats(undefined)).toEqual(['json', 'markdown']);
+  });
+
+  it('keeps JSON first when JSON is the saved default', () => {
+    expect(orderedExportFormats('json')).toEqual(['json', 'markdown']);
+  });
+
+  it('puts Markdown first when Markdown is the saved default', () => {
+    expect(orderedExportFormats('markdown')).toEqual(['markdown', 'json']);
   });
 });

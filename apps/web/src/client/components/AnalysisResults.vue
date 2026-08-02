@@ -1,13 +1,34 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import type { LocalAnalyzeResponse } from '@roleproof/shared';
 
 import ResultMetric from './ResultMetric.vue';
-import { downloadAnalysis } from '../exports/download.js';
+import { downloadAnalysis, orderedExportFormats } from '../exports/download.js';
+import { getSettings } from '../api/client.js';
 
 const props = defineProps<{
   response: LocalAnalyzeResponse;
 }>();
+
+const defaultExportFormat = ref<'json' | 'markdown' | null>(null);
+const exportSettingsLoaded = ref(false);
+
+onMounted(() => {
+  getSettings()
+    .then((response) => {
+      defaultExportFormat.value = response.settings.defaultExportFormat ?? null;
+    })
+    .catch(() => {
+      defaultExportFormat.value = null;
+    })
+    .finally(() => {
+      exportSettingsLoaded.value = true;
+    });
+});
+
+const exportFormats = computed<Array<'json' | 'markdown'>>(() =>
+  orderedExportFormats(defaultExportFormat.value),
+);
 
 const strongMatches = computed(
   () =>
@@ -47,12 +68,19 @@ function saveAnalysis(format: 'json' | 'markdown') {
       </div>
       <div class="result-heading-actions">
         <span class="mode-badge">{{ resultModeLabel }}</span>
-        <button class="export-button" type="button" @click="saveAnalysis('json')">
-          Download JSON
-        </button>
-        <button class="export-button" type="button" @click="saveAnalysis('markdown')">
-          Download Markdown
-        </button>
+        <template v-if="exportSettingsLoaded">
+          <button
+            v-for="format in exportFormats"
+            :key="format"
+            class="export-button"
+            :class="{ 'export-button-primary': format === (defaultExportFormat ?? 'json') }"
+            type="button"
+            @click="saveAnalysis(format)"
+          >
+            Download {{ format === 'json' ? 'JSON' : 'Markdown' }}
+          </button>
+        </template>
+        <span v-else class="export-loading" role="status">Loading export preferences...</span>
       </div>
     </header>
 

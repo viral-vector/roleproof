@@ -9,6 +9,13 @@ export interface AnalysisDownload {
   content: string;
 }
 
+export function orderedExportFormats(
+  defaultFormat: AnalysisDownloadFormat | null | undefined,
+): Array<AnalysisDownloadFormat> {
+  const preferred = defaultFormat ?? 'json';
+  return preferred === 'markdown' ? ['markdown', 'json'] : ['json', 'markdown'];
+}
+
 export function createAnalysisDownload(
   response: LocalAnalyzeResponse,
   format: AnalysisDownloadFormat,
