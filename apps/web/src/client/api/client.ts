@@ -43,6 +43,7 @@ export interface LocalHealth {
 export interface AnalyzeLocalInput {
   resumeText: string;
   jobText: string;
+  jobUrl?: string;
   mode?: 'deterministic' | 'ai-enhanced';
   confirmProviderTransmission?: boolean;
   resumeSource?: LocalResumeSource;
@@ -98,6 +99,7 @@ export async function analyzeLocal(
         : {}),
       resumeText: input.resumeText,
       jobText: input.jobText,
+      ...(input.jobUrl === undefined ? {} : { jobUrl: input.jobUrl }),
       ...(input.resumeSource === undefined ? {} : { resumeSource: input.resumeSource }),
     });
   } catch {
@@ -162,6 +164,7 @@ export async function analyzeLocalStream(
         : {}),
       resumeText: input.resumeText,
       jobText: input.jobText,
+      ...(input.jobUrl === undefined ? {} : { jobUrl: input.jobUrl }),
       ...(input.resumeSource === undefined ? {} : { resumeSource: input.resumeSource }),
     }),
   });

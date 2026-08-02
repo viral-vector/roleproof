@@ -83,6 +83,8 @@ test('runs the full analysis flow with keyboard-only navigation', async ({ page 
   await expect(page.getByLabel('Job description')).toBeFocused();
   await page.keyboard.type(jobText);
   await page.keyboard.press('Tab');
+  await expect(page.getByLabel('Use job URL')).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(page.getByLabel('Deterministic baseline')).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Analyze role fit' })).toBeFocused();
@@ -392,6 +394,7 @@ test('invalidates consent when provider settings change before submission', asyn
   await page.getByLabel('Job description').fill(jobText);
   await page.getByLabel('AI-enhanced analysis').check();
   const consent = page.getByLabel(/I confirm RoleProof may send redacted analysis inputs/u);
+  await expect(consent).toBeEnabled();
   await consent.check();
 
   const changed = await page.request.put('/api/settings', {
@@ -451,7 +454,7 @@ test('shows the deterministic fallback and sends resume provenance in AI mode', 
       suggestedAdditions: [],
       interviewTopics: [],
       generatedAt: '2026-01-01T00:00:00.000Z',
-      metadata: { mode: 'deterministic', engineVersion: '0.4.0' },
+      metadata: { mode: 'deterministic', engineVersion: '0.5.0' },
     },
   });
   let submittedBody: Record<string, unknown> = {};
@@ -552,7 +555,7 @@ test('renders AI enhancement sections and keeps them in exports', async ({ page 
         suggestedAdditions: [],
         interviewTopics: [],
         generatedAt: '2026-01-01T00:00:00.000Z',
-        metadata: { mode: 'deterministic', engineVersion: '0.4.0' },
+        metadata: { mode: 'deterministic', engineVersion: '0.5.0' },
       },
     }).analysis,
     aiEnhancement: {

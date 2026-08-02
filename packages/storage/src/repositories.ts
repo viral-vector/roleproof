@@ -82,6 +82,7 @@ export interface RoleProofRepositories {
   documents: DocumentRepository;
   evidence: CareerEvidenceRepository;
   jobs: JobRepository;
+  jobSources: Pick<JobRepository, 'saveSource' | 'getSource'>;
   analyses: AnalysisRepository;
   search: SearchRepository;
   settings: SettingsRepository;
@@ -561,11 +562,16 @@ export function createRoleProofRepositories(
   };
 
   const aiRepositories = createAIRepositories(database, clock);
+  const jobs = createJobRepository(database, clock);
   return {
     profiles,
     documents,
     evidence,
-    jobs: createJobRepository(database, clock),
+    jobs,
+    jobSources: {
+      saveSource: (source) => jobs.saveSource(source),
+      getSource: (jobId) => jobs.getSource(jobId),
+    },
     analyses: createAnalysisRepository(database, clock),
     search: createSearchRepository(database),
     settings: createSettingsRepository(database, clock),

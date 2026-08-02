@@ -4,21 +4,24 @@ import {
   EvidenceReferenceSchema,
   JobRequirementSchema,
   StoredJobSchema,
+  StoredJobSourceSchema,
   type AnalysisHistoryItem,
   type AnalysisResult,
   type EvidenceReference,
   type JobRequirement,
   type StoredJob,
+  type StoredJobSource,
 } from '@roleproof/shared';
 
 export type { AnalysisHistoryItem } from '@roleproof/shared';
 
 import type { StorageDatabase } from './database.js';
 import { StorageError } from './errors.js';
-import type { AnalysisTable, JobRequirementTable, JobTable } from './schema.js';
+import type { AnalysisTable, JobRequirementTable, JobSourceTable, JobTable } from './schema.js';
 
 type Clock = () => Date;
 type CreateJob = Omit<StoredJob, 'createdAt' | 'updatedAt'>;
+type CreateJobSource = Omit<StoredJobSource, 'createdAt' | 'updatedAt'>;
 
 export interface StoredAnalysis {
   result: AnalysisResult;
@@ -30,6 +33,8 @@ export interface JobRepository {
   save(job: CreateJob, requirements: JobRequirement[]): Promise<StoredJob>;
   get(id: string): Promise<StoredJob | undefined>;
   getRequirements(jobId: string): Promise<JobRequirement[]>;
+  saveSource(source: CreateJobSource): Promise<StoredJobSource>;
+  getSource(jobId: string): Promise<StoredJobSource | undefined>;
 }
 
 export interface AnalysisRepository {
@@ -80,6 +85,25 @@ function toRequirement(row: JobRequirementTable): JobRequirement {
     ...(row.normalized_name === null ? {} : { normalizedName: row.normalized_name }),
     importance: row.importance,
     ...(row.years_requested === null ? {} : { yearsRequested: row.years_requested }),
+  });
+}
+
+function toJobSource(row: JobSourceTable): StoredJobSource {
+  return StoredJobSourceSchema.parse({
+    jobId: row.job_id,
+    schemaVersion: '1.0',
+    url: row.url,
+    ...(row.final_url === null ? {} : { finalUrl: row.final_url }),
+    retrievedAt: row.retrieved_at,
+    ...(row.status_code === null ? {} : { statusCode: row.status_code }),
+    ...(row.content_type === null ? {} : { contentType: row.content_type }),
+    sourceClassification: row.source_classification,
+    atsProvider: row.ats_provider,
+    removedOrUnavailable: row.removed_or_unavailable === 1,
+    confidence: row.confidence,
+    warnings: JSON.parse(row.warnings_json) as unknown,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   });
 }
 
@@ -206,6 +230,64 @@ export function createJobRepository(database: StorageDatabase, clock: Clock): Jo
         return rows.map(toRequirement);
       } catch (cause) {
         fail('get job requirements', cause);
+      }
+    },
+
+    async saveSource(input) {
+      try {
+        const timestamp = clock().toISOString();
+        const source = validate('job source', () =>
+          StoredJobSourceSchema.parse({ ...input, createdAt: timestamp, updatedAt: timestamp }),
+        );
+        await database
+          .insertInto('job_sources')
+          .values({
+            job_id: source.jobId,
+            url: source.url,
+            final_url: source.finalUrl ?? null,
+            retrieved_at: source.retrievedAt,
+            status_code: source.statusCode ?? null,
+            content_type: source.contentType ?? null,
+            source_classification: source.sourceClassification,
+            ats_provider: source.atsProvider,
+            removed_or_unavailable: source.removedOrUnavailable ? 1 : 0,
+            confidence: source.confidence,
+            warnings_json: JSON.stringify(source.warnings),
+            created_at: source.createdAt,
+            updated_at: source.updatedAt,
+          })
+          .onConflict((conflict) =>
+            conflict.column('job_id').doUpdateSet({
+              url: source.url,
+              final_url: source.finalUrl ?? null,
+              retrieved_at: source.retrievedAt,
+              status_code: source.statusCode ?? null,
+              content_type: source.contentType ?? null,
+              source_classification: source.sourceClassification,
+              ats_provider: source.atsProvider,
+              removed_or_unavailable: source.removedOrUnavailable ? 1 : 0,
+              confidence: source.confidence,
+              warnings_json: JSON.stringify(source.warnings),
+              updated_at: source.updatedAt,
+            }),
+          )
+          .execute();
+        return source;
+      } catch (cause) {
+        fail('save job source', cause);
+      }
+    },
+
+    async getSource(jobId) {
+      try {
+        const row = await database
+          .selectFrom('job_sources')
+          .selectAll()
+          .where('job_id', '=', jobId)
+          .executeTakeFirst();
+        return row === undefined ? undefined : toJobSource(row);
+      } catch (cause) {
+        fail('get job source', cause);
       }
     },
   };

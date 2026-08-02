@@ -85,6 +85,7 @@ describe('client API contract', () => {
       {
         resumeText: 'Fictional resume text',
         jobText: 'Fictional job text',
+        jobUrl: 'https://boards.greenhouse.io/fictionalco/jobs/123',
         resumeSource: {
           format: 'docx',
           fileName: 'fictional resume.docx',
@@ -108,6 +109,7 @@ describe('client API contract', () => {
       mode: 'deterministic',
       resumeText: 'Fictional resume text',
       jobText: 'Fictional job text',
+      jobUrl: 'https://boards.greenhouse.io/fictionalco/jobs/123',
       resumeSource: {
         format: 'docx',
         fileName: 'fictional resume.docx',
@@ -145,6 +147,7 @@ describe('client API contract', () => {
       {
         resumeText: 'Fictional resume text',
         jobText: 'Fictional job text',
+        jobUrl: 'https://boards.greenhouse.io/fictionalco/jobs/123',
         mode: 'ai-enhanced',
         confirmProviderTransmission: true,
       },
@@ -159,6 +162,7 @@ describe('client API contract', () => {
       confirmProviderTransmission: true,
       resumeText: 'Fictional resume text',
       jobText: 'Fictional job text',
+      jobUrl: 'https://boards.greenhouse.io/fictionalco/jobs/123',
     });
   });
 
@@ -170,6 +174,7 @@ describe('client API contract', () => {
         {
           resumeText: 'Fictional resume text',
           jobText: 'Fictional job text',
+          jobUrl: 'https://boards.greenhouse.io/fictionalco/jobs/123',
           mode: 'ai-enhanced',
           confirmProviderTransmission: false,
         },

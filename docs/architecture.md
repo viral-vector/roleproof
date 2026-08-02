@@ -1,9 +1,10 @@
 # Architecture
 
-## Phase 4 Boundary
+## Phase 5 Boundary
 
-Phase 4 provides local deterministic, evidence-aware analysis with SQLite storage, optional
-AI-enhanced guidance, and a Fastify/Vue local web UI. The implemented dependency direction is:
+Phase 5 provides local deterministic, evidence-aware analysis with SQLite storage, optional
+AI-enhanced guidance, a Fastify/Vue local web UI, and bounded job URL source analysis. The
+implemented dependency direction is:
 
 ```text
 apps/cli
@@ -36,19 +37,23 @@ server shuts down.
 
 ### Web
 
-`apps/web` owns the local Fastify server and Vue/Vite shell for Phase 4. The frontend uses Vue
+`apps/web` owns the local Fastify server and Vue/Vite shell. The frontend uses Vue
 Router for local screens, Pinia for client state, a typed local API client, local reusable Vue
 components, and custom CSS token/component layers rather than a visual component framework. It
 exposes local API routes without requiring accounts, telemetry, or cloud dependencies.
 `POST /api/analyze` and `POST /api/analyze/stream` validate the shared local request schema, parse
-plaintext through `packages/parsers`, delegate matching and scoring to `packages/core`, and return
-the canonical deterministic analysis envelope. In AI-enhanced mode, the server constructs provider
+plaintext or bounded job URLs through `packages/parsers`, delegate matching and scoring to
+`packages/core`, and return the canonical deterministic analysis envelope. URL-backed analyses attach
+source metadata to `analysis.metadata.jobSource`, including source classification, ATS provider,
+retrieval status, and warnings. In AI-enhanced mode, the server constructs provider
 inputs from the stored deterministic baseline and returns either an enhanced `2.0` sidecar envelope
 or the unchanged deterministic fallback; provider failures are recorded as sanitized provider-call
 metadata when storage is available. When storage is available, analyze routes also persist the
 résumé document, extracted evidence, job description, and analysis through `packages/storage` using
-stable IDs and source-aware analysis identity. Identical pasted analyses reuse one history row;
-uploaded résumé provenance is preserved in document metadata and source-specific analysis identity.
+stable IDs and source-aware analysis identity. URL-backed jobs also persist source metadata through
+`job_sources` and use the fetched content hash for duplicate detection. Identical pasted analyses
+reuse one history row; uploaded résumé provenance is preserved in document metadata and
+source-specific analysis identity.
 `GET /api/history` lists stored analyses or restricts them to full-text search matches,
 `GET /api/history/:id` returns a deterministic or enhanced stored analysis envelope,
 `DELETE /api/history/:id` removes an analysis together with any job description only it references,
@@ -143,5 +148,5 @@ matches, or blockers.
 
 ## Deferred Architecture
 
-Job URL analysis begins in Phase 5, and automation integrations begin in Phase 6. None is required
-to use the deterministic CLI, local web UI, local storage, or optional provider enhancement.
+Automation integrations begin in Phase 6. They are not required to use the deterministic CLI, local
+web UI, job URL source analysis, local storage, or optional provider enhancement.

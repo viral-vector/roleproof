@@ -10,6 +10,9 @@ provider-transmission confirmation checkbox before it sends redacted analysis in
 ## Inputs
 
 - Resume and job files are read only after an explicit `analyze` command.
+- Job URLs are fetched only after an explicit `analyze` command or browser analysis submission. URL
+  fetching is performed by the local process, bounded by byte, redirect, and timeout limits, and
+  accepts HTTP(S) only.
 - Selecting a résumé in the browser does not send or parse it. The file is sent only to the local
   Fastify server after the user explicitly runs analysis.
 - Parser configuration and filesystem byte size are validated before document content is loaded.
@@ -18,13 +21,16 @@ provider-transmission confirmation checkbox before it sends redacted analysis in
   after completion or timeout. DOCX extraction is bounded by the same input byte and extracted-text
   limits and never executes embedded document content.
 - Parser errors identify the input path and corrective action without echoing document contents.
+- Job URL errors are content-free and do not log fetched page bodies.
 - The local parse endpoint logs only content-free failure reasons to the server's stderr, such as
   the parser error code and a static description; uploaded file contents never appear in these
   lines.
 - Tests and repository fixtures contain fictional data only.
 - Browser uploads are held in memory for parsing and are not persisted by the local parse endpoint.
   The persisted analysis record stores parsed résumé text and source provenance such as safe
-  filename, format, content hash, confidence, and parser warnings when available.
+  filename, format, content hash, confidence, and parser warnings when available. URL-backed job
+  analyses store retrieval metadata such as URL, final URL, status, content type, source
+  classification, ATS provider, confidence, and warnings.
 
 ## Outputs
 
@@ -35,9 +41,9 @@ provider-transmission confirmation checkbox before it sends redacted analysis in
 ## Local Database
 
 The SQLite database can contain profiles and preferences, parsed resume documents, manual evidence
-notes, career evidence and source text, job descriptions and requirements, complete analysis JSON,
-evidence-reference snapshots, Markdown reports, immutable AI-enhancement sidecars, sanitized
-provider-call metadata, and settings.
+notes, career evidence and source text, job descriptions and requirements, job source retrieval
+metadata, complete analysis JSON, evidence-reference snapshots, Markdown reports, immutable
+AI-enhancement sidecars, sanitized provider-call metadata, and settings.
 
 FTS5 external-content indexes duplicate searchable text in index structures. This includes resume
 and evidence-note text, job text, career-evidence names, descriptions and source fields, and stored

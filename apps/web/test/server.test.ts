@@ -22,6 +22,20 @@ function multipartResume(filename: string, mediaType: string, content: string | 
   };
 }
 
+function mockedJobPageFetch(): typeof fetch {
+  return vi.fn(() =>
+    Promise.resolve(
+      new Response(
+        '<html><body><main><h1>Fictional Backend Engineer</h1><p>Required: TypeScript</p></main></body></html>',
+        {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        },
+      ),
+    ),
+  ) as typeof fetch;
+}
+
 describe('local web server foundation', () => {
   it('serves the local Vue UI shell without requiring a cloud connection', async () => {
     const app = createLocalWebApp();
@@ -148,8 +162,40 @@ describe('local web server foundation', () => {
     }
   });
 
+  it('resolves a job URL into fetched job content and source metadata', async () => {
+    const app = createLocalWebApp({
+      jobUrlFetch: mockedJobPageFetch(),
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: {
+          schemaVersion: '1.0',
+          mode: 'deterministic',
+          resumeText: 'Fictional Candidate\nExperience: TypeScript',
+          jobText: '',
+          jobUrl: 'https://boards.greenhouse.io/fictionalco/jobs/123',
+        },
+      });
+      expect(response.statusCode).toBe(200);
+      if (response.statusCode !== 200) {
+        throw new Error(response.body);
+      }
+      const body = LocalAnalyzeResponseSchema.parse(JSON.parse(response.body));
+      expect(body.analysis.metadata.jobSource).toMatchObject({
+        url: 'https://boards.greenhouse.io/fictionalco/jobs/123',
+        removedOrUnavailable: false,
+      });
+      expect(body.analysis.metadata.jobSource?.sourceClassification).toBeDefined();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('streams progress and a final analysis response for deterministic runs', async () => {
-    const app = createLocalWebApp();
+    const app = createLocalWebApp({ jobUrlFetch: mockedJobPageFetch() });
 
     try {
       const response = await app.inject({
@@ -159,7 +205,8 @@ describe('local web server foundation', () => {
           schemaVersion: '1.0',
           mode: 'deterministic',
           resumeText: ['Fictional Candidate', 'Experience: TypeScript'].join('\n'),
-          jobText: ['Fictional Backend Engineer', 'Required: TypeScript'].join('\n'),
+          jobText: '',
+          jobUrl: 'https://boards.greenhouse.io/fictionalco/jobs/123',
         },
       });
       const lines = response.body
@@ -171,7 +218,12 @@ describe('local web server foundation', () => {
       expect(lines[0]?.kind).toBe('progress');
       expect(lines.at(-1)?.kind).toBe('result');
       const result = lines.at(-1) as { kind: 'result'; response: unknown };
-      expect(LocalAnalyzeResponseSchema.parse(result.response).schemaVersion).toBe('1.0');
+      const body = LocalAnalyzeResponseSchema.parse(result.response);
+      expect(body.schemaVersion).toBe('1.0');
+      expect(body.analysis.metadata.jobSource).toMatchObject({
+        url: 'https://boards.greenhouse.io/fictionalco/jobs/123',
+        removedOrUnavailable: false,
+      });
     } finally {
       await app.close();
     }

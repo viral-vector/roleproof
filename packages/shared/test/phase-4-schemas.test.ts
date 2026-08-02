@@ -51,6 +51,13 @@ describe('Phase 4 local API schemas', () => {
     expect(LocalAnalyzeRequestSchema.safeParse({ ...request, resumeText: '   ' }).success).toBe(
       false,
     );
+    expect(
+      LocalAnalyzeRequestSchema.safeParse({
+        schemaVersion: '1.0',
+        resumeText: 'Fictional resume with TypeScript.',
+        jobUrl: 'https://boards.greenhouse.io/fictionalco/jobs/123',
+      }).success,
+    ).toBe(true);
   });
 
   it('validates streaming analyze events for progress, result, and error states', () => {
@@ -116,6 +123,15 @@ describe('Phase 4 local API schemas', () => {
     expect(LocalAnalyzeRequestSchema.safeParse({ ...request, mode: 'deterministic' }).success).toBe(
       false,
     );
+    expect(
+      LocalAnalyzeRequestSchema.safeParse({
+        schemaVersion: '1.0',
+        mode: 'ai-enhanced',
+        resumeText: 'Fictional resume with TypeScript.',
+        jobUrl: 'https://boards.greenhouse.io/fictionalco/jobs/123',
+        confirmProviderTransmission: true,
+      }).success,
+    ).toBe(true);
   });
 
   it('reuses the canonical deterministic analysis envelope for responses', () => {

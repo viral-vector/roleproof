@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0 - 2026-08-02
+
+RoleProof's job URL source analysis release for bounded URL fetching, source classification, ATS
+detection, and persisted retrieval metadata across CLI and local web workflows.
+
+### Phase 5 Job URL Source Analysis
+
+- Added bounded HTTP(S) job URL fetching with byte, timeout, and redirect limits before deterministic
+  parsing and analysis.
+- Added source metadata for fetched postings, including original URL, final URL, retrieval time,
+  status, content type, source classification, ATS provider, confidence, and warnings.
+- Added removed or unavailable page detection so deleted postings fail safely instead of becoming
+  empty or misleading analyses.
+- Persisted job source metadata in SQLite and keyed URL-backed job hashes to fetched content instead
+  of the URL string.
+- Surfaced job source metadata in JSON and Markdown outputs and added browser URL input with local
+  fetch disclosure. URL fetching remains explicit and does not involve hosted providers.
+
 ## 0.4.0 - 2026-08-02
 
 RoleProof's local web UI release for browser-based deterministic analysis, optional AI-enhanced

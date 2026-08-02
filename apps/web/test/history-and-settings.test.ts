@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+
+import { describe, expect, it, vi } from 'vitest';
 import {
   LocalAnalyzeResponseSchema,
   LocalAnalyzeStreamEventSchema,
@@ -59,6 +61,24 @@ const otherJobText = [
   '- Python',
   '- Tableau',
 ].join('\n');
+
+const mockedJobPageHtml =
+  '<html><body><main><h1>Fictional Backend Engineer</h1><p>Required: TypeScript</p></main></body></html>';
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function mockedJobPageFetch(): typeof fetch {
+  return vi.fn(() =>
+    Promise.resolve(
+      new Response(mockedJobPageHtml, {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      }),
+    ),
+  ) as typeof fetch;
+}
 
 function analyzePayload(resume: string, job: string) {
   return { schemaVersion: '1.0', mode: 'deterministic', resumeText: resume, jobText: job };
@@ -154,10 +174,14 @@ function successfulProvider(config: ProviderConfig, calls: string[]): AIProvider
   };
 }
 
-async function appWithStorage() {
+async function appWithStorage(jobUrlFetch?: typeof fetch) {
   const database: StorageDatabase = await openStorage({ path: ':memory:' });
   const repositories: RoleProofRepositories = createRoleProofRepositories(database);
-  const app = createLocalWebApp({ repositories, databasePath: ':memory:' });
+  const app = createLocalWebApp({
+    repositories,
+    databasePath: ':memory:',
+    ...(jobUrlFetch === undefined ? {} : { jobUrlFetch }),
+  });
   return { app, database, repositories };
 }
 
@@ -797,6 +821,47 @@ describe('local AI analyze API', () => {
       expect(resumeDocument?.warnings).toEqual([
         { code: 'pdf-low-text-content', message: 'Fictional low text content.' },
       ]);
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('persists URL job source metadata and hashes fetched job content', async () => {
+    const jobUrl = 'https://boards.greenhouse.io/fictionalco/jobs/123';
+    const { app, database, repositories } = await appWithStorage(mockedJobPageFetch());
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: {
+          schemaVersion: '1.0',
+          mode: 'deterministic',
+          resumeText,
+          jobText: '',
+          jobUrl,
+        },
+      });
+      const body = LocalAnalyzeResponseSchema.parse(JSON.parse(response.body));
+      const jobId = body.analysis.jobId;
+
+      expect(response.statusCode).toBe(200);
+      expect(body.analysis.metadata.jobSource).toMatchObject({
+        url: jobUrl,
+        removedOrUnavailable: false,
+      });
+      expect(jobId).toBeDefined();
+      const storedSource = await repositories.jobSources.getSource(jobId ?? 'missing');
+      const storedJob = await repositories.jobs.get(jobId ?? 'missing');
+
+      expect(storedSource).toMatchObject({
+        jobId,
+        url: jobUrl,
+        removedOrUnavailable: false,
+      });
+      expect(storedJob?.text).toContain('Required: TypeScript');
+      expect(storedJob?.contentSha256).toBe(sha256(mockedJobPageHtml));
+      expect(storedJob?.contentSha256).not.toBe(sha256(jobUrl));
     } finally {
       await closeApp(app, database);
     }

@@ -56,7 +56,7 @@ interpretations, evidence mappings, confirmation-gated additions, suggestions, a
 provider execution metadata. Provider fallback emits the deterministic `1.0` envelope and exits
 with code `4`. Enhanced `report.show` command output similarly uses command-envelope version `2.0`.
 
-The Phase 4 local API reuses these contracts. `POST /api/analyze` accepts a strict deterministic
+The local API reuses these contracts. `POST /api/analyze` accepts a strict deterministic
 request envelope by default:
 
 ```json
@@ -65,6 +65,20 @@ request envelope by default:
   "mode": "deterministic",
   "resumeText": "Fictional resume text",
   "jobText": "Fictional job text"
+}
+```
+
+Phase 5 adds optional job URL input to the same request envelope. A request may provide nonblank
+`jobText`, `jobUrl`, or both. When `jobUrl` is present, the local server fetches the posting with
+bounded parser limits and analyzes the fetched job text:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "mode": "deterministic",
+  "resumeText": "Fictional resume text",
+  "jobText": "",
+  "jobUrl": "https://boards.greenhouse.io/fictionalco/jobs/123"
 }
 ```
 
@@ -85,6 +99,29 @@ Deterministic responses use the canonical analysis envelope version `1.0`. Succe
 responses use the enhanced envelope version `2.0` with `aiEnhancement`. If provider enhancement is
 unavailable or invalid, the route returns the unchanged deterministic `1.0` envelope and records the
 provider failure when storage is enabled. Responses never include stored provider settings.
+
+URL-backed analyses include `analysis.metadata.jobSource` when retrieval succeeds:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "url": "https://boards.greenhouse.io/fictionalco/jobs/123",
+  "finalUrl": "https://boards.greenhouse.io/fictionalco/jobs/123",
+  "retrievedAt": "2026-01-01T00:00:00.000Z",
+  "statusCode": 200,
+  "contentType": "text/html; charset=utf-8",
+  "sourceClassification": "official-ats",
+  "atsProvider": "greenhouse",
+  "removedOrUnavailable": false,
+  "confidence": 0.9,
+  "warnings": []
+}
+```
+
+`sourceClassification` is one of `official-company`, `official-ats`, `aggregator`, `unknown`, or
+`unavailable`. `atsProvider` is a detected ATS value such as `greenhouse`, `lever`, `ashby`,
+`workday`, `icims`, `smartrecruiters`, `bamboohr`, `workable`, `oracle`, `successfactors`, or
+`unknown`. Removed or unavailable pages are rejected before analysis.
 
 When the server has storage, analyzed inputs and results are persisted and exposed through history
 routes. `GET /api/history` returns a `LocalHistoryListResponseSchema` envelope:
@@ -215,7 +252,8 @@ Important analysis fields include:
 - `unsupportedClaims`: warnings against unsupported experience claims
 - `suggestedEmphasis`: evidence-linked safe emphasis
 - `suggestedAdditions`: additions that require confirmation where applicable
-- `metadata`: deterministic mode, engine/data versions, and parsing confidence
+- `metadata`: deterministic mode, engine/data versions, parsing confidence, and optional job source
+  retrieval metadata
 
 Stored analyses retain an immutable `evidenceReferences` snapshot, returned by `report.show` in its
 command envelope alongside `analysis`. Each reference contains:

@@ -57,6 +57,35 @@ export interface JobTable extends TimestampedTable {
   confidence: number;
 }
 
+export interface JobSourceTable extends TimestampedTable {
+  job_id: string;
+  url: string;
+  final_url: string | null;
+  retrieved_at: string;
+  status_code: number | null;
+  content_type: string | null;
+  source_classification:
+    | 'official-employer'
+    | 'official-ats'
+    | 'recruiter'
+    | 'aggregator'
+    | 'unknown'
+    | 'removed-unavailable';
+  ats_provider:
+    | 'greenhouse'
+    | 'lever'
+    | 'workday'
+    | 'ashby'
+    | 'paylocity'
+    | 'rippling'
+    | 'jazzhr'
+    | 'smartrecruiters'
+    | 'unknown';
+  removed_or_unavailable: 0 | 1;
+  confidence: number;
+  warnings_json: string;
+}
+
 export interface JobRequirementTable {
   id: string;
   job_id: string;
@@ -171,6 +200,7 @@ export interface StorageSchema {
   documents: DocumentTable;
   career_evidence: CareerEvidenceTable;
   jobs: JobTable;
+  job_sources: JobSourceTable;
   job_requirements: JobRequirementTable;
   analyses: AnalysisTable;
   provider_calls: ProviderCallTable;

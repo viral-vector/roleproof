@@ -22,6 +22,29 @@ function renderLines(lines: string[], emptyMessage: string): string {
   return lines.length === 0 ? `- ${emptyMessage}` : lines.join('\n');
 }
 
+function renderJobSourceSection(
+  source: NonNullable<AnalysisResult['metadata']['jobSource']>,
+): string[] {
+  return [
+    '## Job Source',
+    '',
+    `- Source URL: \`${source.url}\``,
+    ...(source.finalUrl === undefined ? [] : [`- Final URL: \`${source.finalUrl}\``]),
+    `- Retrieved at: \`${source.retrievedAt}\``,
+    ...(source.statusCode === undefined ? [] : [`- Status code: \`${source.statusCode}\``]),
+    ...(source.contentType === undefined ? [] : [`- Content type: \`${source.contentType}\``]),
+    `- Source classification: \`${source.sourceClassification}\``,
+    `- ATS provider: \`${source.atsProvider}\``,
+    `- Removed or unavailable: **${source.removedOrUnavailable ? 'yes' : 'no'}**`,
+    `- Confidence: **${Math.round(source.confidence * 100)}%**`,
+    renderLines(
+      source.warnings.map((warning) => `- [${warning.code}] ${text(warning.message)}`),
+      'No source warnings were generated.',
+    ),
+    '',
+  ];
+}
+
 export function renderMarkdown(result: AnalysisResult): string {
   const analysis = AnalysisResultSchema.parse(result);
   const strongMatches = analysis.matchedRequirements.filter(
@@ -123,6 +146,9 @@ export function renderMarkdown(result: AnalysisResult): string {
     `- Engine version: \`${analysis.metadata.engineVersion}\``,
     `- Generated at: \`${analysis.generatedAt}\``,
     '',
+    ...(analysis.metadata.jobSource === undefined
+      ? []
+      : renderJobSourceSection(analysis.metadata.jobSource)),
   ];
 
   return sections.join('\n');

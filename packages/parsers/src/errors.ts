@@ -2,11 +2,20 @@ export type ParserErrorCode =
   | 'binary-content'
   | 'docx-error'
   | 'empty-document'
+  | 'empty-extraction'
+  | 'content-type-unsupported'
+  | 'fetch-failed'
+  | 'fetch-redirect-limit'
+  | 'fetch-size-limit'
+  | 'fetch-timeout'
   | 'file-read'
   | 'pdf-error'
   | 'pdf-page-limit'
   | 'pdf-timeout'
+  | 'removed-unavailable'
   | 'size-limit'
+  | 'url-invalid'
+  | 'url-unsupported-protocol'
   | 'unsupported-format';
 
 export class ParserError extends Error {

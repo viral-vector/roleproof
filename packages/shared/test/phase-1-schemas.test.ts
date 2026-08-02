@@ -287,6 +287,9 @@ describe('configuration schemas', () => {
         pdfTimeoutMs: 10_000,
         maxPdfPages: 50,
         maxImagePixels: 16_777_216,
+        maxUrlBytes: 1_000_000,
+        urlTimeoutMs: 10_000,
+        maxUrlRedirects: 5,
       }).success,
     ).toBe(true);
   });
@@ -300,6 +303,9 @@ describe('configuration schemas', () => {
         pdfTimeoutMs: -1,
         maxPdfPages: 0,
         maxImagePixels: 0,
+        maxUrlBytes: 0,
+        urlTimeoutMs: 0,
+        maxUrlRedirects: -1,
       }).success,
     ).toBe(false);
   });

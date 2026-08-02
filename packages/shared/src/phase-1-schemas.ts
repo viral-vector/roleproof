@@ -213,6 +213,9 @@ export const ParserConfigSchema = z
     pdfTimeoutMs: positiveIntegerSchema,
     maxPdfPages: positiveIntegerSchema,
     maxImagePixels: positiveIntegerSchema,
+    maxUrlBytes: positiveIntegerSchema,
+    urlTimeoutMs: positiveIntegerSchema,
+    maxUrlRedirects: positiveIntegerSchema,
   })
   .strict();
 

@@ -6,17 +6,18 @@ inventing experience or presenting a fit score as an interview or hiring probabi
 
 ## Project Status
 
-Phase 4 provides a local Fastify server behind `roleproof serve` and a browser workflow for local
-analysis. RoleProof accepts plaintext, PDF, or DOCX resumes and plaintext job descriptions, stores
-profiles and career evidence, retains analysis history, supports full-text search, and renders
-schema-versioned JSON or Markdown. Optional evidence-constrained AI enhancement is available in the
-CLI and browser only after explicit provider selection and consent.
+Phase 5 provides a local Fastify server behind `roleproof serve`, a browser workflow for local
+analysis, and bounded job URL source analysis. RoleProof accepts plaintext, PDF, or DOCX resumes and
+pasted or URL-backed job descriptions, stores profiles and career evidence, retains analysis history,
+supports full-text search, and renders schema-versioned JSON or Markdown. Optional
+evidence-constrained AI enhancement is available in the CLI and browser only after explicit provider
+selection and consent.
 
 The browser workflow supports pasted text or TXT/PDF/DOCX résumé uploads with deterministic
 analysis, AI-enhanced analysis with deterministic fallback, provider/redaction settings, stored
-analysis history with search and detail views, and JSON/Markdown downloads. Job URL fetching is not
-implemented. See [`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the phased product
-specification.
+analysis history with search and detail views, job URL fetching with source metadata, and
+JSON/Markdown downloads. See [`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the
+phased product specification.
 
 ## Requirements
 
@@ -58,7 +59,8 @@ Analysis persists by default to `~/.roleproof/roleproof.db`. Use the global `--d
 <absolute-sqlite-path>` option to select another database, or `--no-store` to avoid persistence.
 Supported options include `--format markdown|json|both`, `--out`, `--stdout`, `--no-ai`,
 `--no-store`, `--profile`, salary targets, location, and remote preference. PDF and DOCX input are
-supported for resumes; job descriptions must be plaintext.
+supported for resumes; job descriptions may be plaintext files or HTTP(S) URLs. URL fetching is
+bounded by parser limits and records source metadata when analysis succeeds.
 
 AI is opt-in through an explicit `--provider` and `--model`; environment variables never select a
 provider. Hosted and custom destinations also require `--confirm-transmission`. See
@@ -84,7 +86,7 @@ explicit hard eligibility blocker. JSON output remains valid in both fallback an
 pnpm exec roleproof serve
 ```
 
-The Phase 4 server starts on `http://localhost:4173` by default and exposes a responsive local
+The Phase 5 server starts on `http://localhost:4173` by default and exposes a responsive local
 Vue/Vite workspace with Vue Router, Pinia, a RoleProof proof-mark favicon, privacy-visible status
 copy, and no account, telemetry, or cloud connection requirement. The browser Analyze form streams
 `POST /api/analyze/stream`, which accepts schema-versioned résumé/job text and returns the same
@@ -95,7 +97,9 @@ evidence, missing requirements, unsupported claims, safe résumé emphasis, conf
 suggestions, and interview topics visible with their truth classifications. JSON and Markdown
 downloads reuse the canonical reporters. The Analyze screen accepts TXT résumés up to 1 MB and
 PDF/DOCX résumés up to 10 MB; selecting a file does not transmit it, and explicit analysis sends it
-only to the local server. Analyses persist to the same local database the CLI uses: the History
+only to the local server. Job URLs are fetched by the local server only when analysis runs; fetched
+postings include source classification, ATS detection, retrieval metadata, and removed-page safety
+checks in the analysis metadata. Analyses persist to the same local database the CLI uses: the History
 screen lists and searches stored reports, opens a stored report on its own page, and deletes a report
 when asked; the Settings screen reads and saves local AI, redaction, provider credential status, and
 output preferences.

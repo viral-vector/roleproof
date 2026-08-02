@@ -18,6 +18,7 @@ const resumeFile = ref<File | null>(null);
 const resumeFileInput = ref<HTMLInputElement | null>(null);
 const resumeSource = ref<LocalResumeSource | null>(null);
 const jobText = ref('');
+const jobUrl = ref('');
 const error = ref('');
 const parseWarnings = ref<string[]>([]);
 const analysisEnvelope = ref<LocalAnalyzeResponse | null>(null);
@@ -43,6 +44,9 @@ const providerSettingsNotice = ref('');
 const progressPercent = computed(() =>
   Math.round((progressCompleted.value / progressTotal.value) * 100),
 );
+
+const trimmedJobUrl = computed(() => jobUrl.value.trim());
+const hasJobUrl = computed(() => trimmedJobUrl.value.length > 0);
 
 const disclosureConfigured = computed(
   () => disclosureSettings.value?.provider != null && disclosureSettings.value?.model != null,
@@ -302,6 +306,7 @@ async function runAnalysis() {
       {
         resumeText: selectedResumeText,
         jobText: jobText.value,
+        jobUrl: hasJobUrl.value ? trimmedJobUrl.value : undefined,
         mode: analysisMode.value,
         confirmProviderTransmission: confirmProviderTransmission.value,
         ...(resumeSource.value === null ? {} : { resumeSource: resumeSource.value }),
@@ -367,14 +372,51 @@ async function runAnalysis() {
             </template>
           </TextareaField>
 
-          <TextareaField
-            id="job-text"
-            v-model="jobText"
-            kicker="Role requirements"
-            label="Job description"
-            help="Paste the role description. URL fetching is not enabled in this phase."
-            placeholder="Paste job description here..."
-          />
+          <section class="field-group job-source-card" aria-labelledby="job-source-title">
+            <div class="field-heading">
+              <div>
+                <span class="field-kicker">Role source</span>
+                <h3 id="job-source-title">Role source</h3>
+              </div>
+              <span id="job-text-count" class="character-count">
+                {{ jobText.length.toLocaleString() }} chars pasted
+              </span>
+            </div>
+            <p id="job-source-help">
+              Fetch an official posting at analysis time, or paste the role text manually.
+            </p>
+
+            <label class="job-text-label" for="job-text">Job description</label>
+            <textarea
+              id="job-text"
+              v-model="jobText"
+              aria-describedby="job-source-help job-text-count"
+              placeholder="Paste job description here..."
+              :required="!hasJobUrl"
+              rows="10"
+            />
+
+            <div class="input-divider"><span>or fetch from URL</span></div>
+
+            <label class="job-url-card" for="job-url">
+              <span class="job-url-label">Use job URL</span>
+              <span class="job-url-copy">
+                RoleProof fetches this page only when you run analysis and records source metadata.
+              </span>
+              <input
+                id="job-url"
+                v-model="jobUrl"
+                type="url"
+                inputmode="url"
+                placeholder="https://boards.greenhouse.io/example/jobs/123"
+                aria-describedby="job-source-help job-url-note"
+                :disabled="running"
+              />
+              <span id="job-url-note" class="job-url-note">
+                If a URL is provided, fetched job text is used for the analysis.
+              </span>
+            </label>
+          </section>
         </div>
 
         <section class="analysis-mode-panel" aria-labelledby="analysis-mode-title">

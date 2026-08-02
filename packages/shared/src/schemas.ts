@@ -227,6 +227,84 @@ export const AnalysisParsingMetadataSchema = z
   })
   .strict();
 
+export const JobSourceClassificationSchema = z.enum([
+  'official-employer',
+  'official-ats',
+  'recruiter',
+  'aggregator',
+  'unknown',
+  'removed-unavailable',
+]);
+
+export const AtsProviderSchema = z.enum([
+  'greenhouse',
+  'lever',
+  'workday',
+  'ashby',
+  'paylocity',
+  'rippling',
+  'jazzhr',
+  'smartrecruiters',
+  'unknown',
+]);
+
+export const JobSourceWarningCodeSchema = z.enum([
+  'redirect-followed',
+  'non-html-content',
+  'empty-extraction',
+  'low-text-content',
+  'page-likely-blocked',
+  'page-seems-removed',
+  'removed-page',
+  'unavailable-content',
+  'size-limit',
+  'timeout',
+  'fetch-failed',
+  'invalid-url',
+]);
+
+export const JobSourceWarningSchema = z
+  .object({
+    code: JobSourceWarningCodeSchema,
+    message: nonBlankStringSchema,
+  })
+  .strict();
+
+export const JobRetrievalMetadataSchema = z
+  .object({
+    schemaVersion: z.literal('1.0'),
+    url: nonBlankStringSchema.max(4096),
+    finalUrl: nonBlankStringSchema.max(4096).optional(),
+    retrievedAt: nonBlankStringSchema,
+    statusCode: z.number().int().min(100).max(599).optional(),
+    contentType: nonBlankStringSchema.max(255).optional(),
+    sourceClassification: JobSourceClassificationSchema,
+    atsProvider: AtsProviderSchema,
+    removedOrUnavailable: z.boolean(),
+    confidence: unitIntervalSchema,
+    warnings: z.array(JobSourceWarningSchema),
+  })
+  .strict()
+  .superRefine((metadata, context) => {
+    if (metadata.sourceClassification === 'official-ats' && metadata.atsProvider === 'unknown') {
+      context.addIssue({
+        code: 'custom',
+        message: 'An official ATS page must identify its ATS provider',
+        path: ['atsProvider'],
+      });
+    }
+    if (
+      metadata.removedOrUnavailable !==
+      (metadata.sourceClassification === 'removed-unavailable')
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'removedOrUnavailable must match the source classification',
+        path: ['removedOrUnavailable'],
+      });
+    }
+  });
+
 export const AnalysisMetadataSchema = z
   .object({
     mode: z.enum(['deterministic', 'ai-enhanced']),
@@ -234,6 +312,7 @@ export const AnalysisMetadataSchema = z
     normalizationVersion: nonBlankStringSchema.optional(),
     scoringVersion: nonBlankStringSchema.optional(),
     parsing: AnalysisParsingMetadataSchema.optional(),
+    jobSource: JobRetrievalMetadataSchema.optional(),
   })
   .strict();
 
@@ -278,3 +357,8 @@ export type ScoreContribution = z.infer<typeof ScoreContributionSchema>;
 export type AnalysisParsingMetadata = z.infer<typeof AnalysisParsingMetadataSchema>;
 export type AnalysisMetadata = z.infer<typeof AnalysisMetadataSchema>;
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
+export type JobSourceClassification = z.infer<typeof JobSourceClassificationSchema>;
+export type AtsProvider = z.infer<typeof AtsProviderSchema>;
+export type JobSourceWarningCode = z.infer<typeof JobSourceWarningCodeSchema>;
+export type JobSourceWarning = z.infer<typeof JobSourceWarningSchema>;
+export type JobRetrievalMetadata = z.infer<typeof JobRetrievalMetadataSchema>;

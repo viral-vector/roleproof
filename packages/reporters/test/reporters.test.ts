@@ -85,6 +85,19 @@ const analysis: AnalysisResult = AnalysisResultSchema.parse({
     engineVersion: '0.1.0',
     normalizationVersion: '1.0.0',
     scoringVersion: '1.0.0',
+    jobSource: {
+      schemaVersion: '1.0',
+      url: 'https://boards.greenhouse.io/fictionalco/jobs/123',
+      finalUrl: 'https://boards.greenhouse.io/fictionalco/jobs/123',
+      retrievedAt: '2026-01-01T00:00:00.000Z',
+      statusCode: 200,
+      contentType: 'text/html; charset=utf-8',
+      sourceClassification: 'official-ats',
+      atsProvider: 'greenhouse',
+      removedOrUnavailable: false,
+      confidence: 0.9,
+      warnings: [],
+    },
     parsing: {
       resumeConfidence: 1,
       jobConfidence: 0.9,
@@ -235,6 +248,7 @@ describe('renderMarkdown', () => {
       '## Suggested Additions Requiring Confirmation',
       '## Interview Talking Points',
       '## Analysis Metadata',
+      '## Job Source',
     ]) {
       expect(rendered).toContain(heading);
     }

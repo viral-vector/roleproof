@@ -9,7 +9,11 @@ import {
   extractJobRequirements,
   profileFactEvidenceIds,
 } from '@roleproof/core';
-import { ParserError, parseDocumentFileWithMetadata } from '@roleproof/parsers';
+import {
+  ParserError,
+  parseDocumentFileWithMetadata,
+  parseJobUrlWithMetadata,
+} from '@roleproof/parsers';
 import {
   buildProviderInputs,
   enhanceAnalysisWithFallback,
@@ -33,8 +37,10 @@ import {
 } from '@roleproof/storage';
 import {
   CandidateContextSchema,
+  AnalysisResultSchema,
   type CandidateProfile,
   type CareerEvidence,
+  type AnalysisResult,
   type JobRequirement,
   type ParsedDocument,
   type ProviderConfig,
@@ -47,6 +53,10 @@ import { writeAnalysisOutput } from '../output.js';
 import type { CliOutput, CliState } from '../program.js';
 import { AnalyzeOptionsSchema, type AnalyzeOptions } from './analyze-options.js';
 import { buildProviderConfig, createConfiguredProvider } from './provider-config.js';
+
+type AnalysisLike = AnalysisResult & {
+  scoreContributions: NonNullable<AnalysisResult['scoreContributions']>;
+};
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -113,6 +123,15 @@ async function closeAnalyzeStorage(database: StorageDatabase): Promise<void> {
 
 function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function isJobUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 function writeTransmissionPreview(provider: AIProvider, output: CliOutput): void {
@@ -276,17 +295,29 @@ export function registerAnalyzeCommand(program: Command, output: CliOutput, stat
       let database: StorageDatabase | undefined;
 
       try {
-        const [resumeFile, jobFile] = await Promise.all([
+        const [resumeFile, jobInput] = await Promise.all([
           parseDocumentFileWithMetadata(options.resume, 'resume'),
-          parseDocumentFileWithMetadata(options.job, 'job'),
+          isJobUrl(options.job)
+            ? parseJobUrlWithMetadata(options.job)
+            : parseDocumentFileWithMetadata(options.job, 'job'),
         ]);
+        const jobFile = 'source' in jobInput ? jobInput : { ...jobInput, source: undefined };
 
         if (!options.store && options.profile === undefined) {
-          const analysis = analyzeDeterministic({
-            resume: resumeFile.document,
-            job: jobFile.document,
-            candidateContext: candidateContext(options),
-          });
+          const analysisBase = AnalysisResultSchema.parse(
+            analyzeDeterministic({
+              resume: resumeFile.document,
+              job: jobFile.document,
+              candidateContext: candidateContext(options),
+            }),
+          ) as AnalysisLike;
+          const analysis: AnalysisLike =
+            jobFile.source === undefined
+              ? analysisBase
+              : (AnalysisResultSchema.parse({
+                  ...analysisBase,
+                  metadata: { ...analysisBase.metadata, jobSource: jobFile.source },
+                }) as AnalysisLike);
           const requirements = extractJobRequirements(
             jobFile.document,
             DEFAULT_NORMALIZATION_DATA.aliases,
@@ -390,6 +421,12 @@ export function registerAnalyzeCommand(program: Command, output: CliOutput, stat
             },
             requirements,
           );
+          if (jobFile.source !== undefined) {
+            await repositories.jobSources.saveSource({
+              ...jobFile.source,
+              jobId: storedJob.id,
+            });
+          }
           analysisJob = {
             schemaVersion: '1.0',
             id: storedJob.id,
@@ -402,13 +439,22 @@ export function registerAnalyzeCommand(program: Command, output: CliOutput, stat
         }
 
         const analysisContext = candidateContext(options, profile);
-        const analysis = analyzeDeterministicWithEvidence({
-          resume: analysisResume,
-          job: analysisJob,
-          candidateContext: analysisContext,
-          profileId,
-          evidence,
-        });
+        const analysisBase = AnalysisResultSchema.parse(
+          analyzeDeterministicWithEvidence({
+            resume: analysisResume,
+            job: analysisJob,
+            candidateContext: analysisContext,
+            profileId,
+            evidence,
+          }),
+        ) as AnalysisLike;
+        const analysis: AnalysisLike =
+          jobFile.source === undefined
+            ? analysisBase
+            : (AnalysisResultSchema.parse({
+                ...analysisBase,
+                metadata: { ...analysisBase.metadata, jobSource: jobFile.source },
+              }) as AnalysisLike);
         const baselineReports = { json: renderJson(analysis), markdown: renderMarkdown(analysis) };
         if (options.store && (await repositories.analyses.get(analysis.id)) === undefined) {
           await repositories.analyses.save(

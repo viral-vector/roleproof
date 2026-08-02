@@ -2,5 +2,8 @@ export * from './config.js';
 export * from './docx.js';
 export * from './errors.js';
 export * from './files.js';
+export * from './html.js';
+export * from './job-source.js';
+export * from './job-url.js';
 export * from './pdf.js';
 export * from './plaintext.js';

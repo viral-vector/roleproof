@@ -3,7 +3,7 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AnalysisEnvelopeSchema } from '@roleproof/shared';
 import { closeStorage, createRoleProofRepositories, openStorage } from '@roleproof/storage';
@@ -106,6 +106,41 @@ describe('roleproof analyze', () => {
     expect(output.schemaVersion).toBe('1.0');
     expect(['apply', 'stretch', 'skip', 'manual-review']).toContain(output.analysis.recommendation);
     expect(output.analysis.scoreContributions).toBeInstanceOf(Array);
+  });
+
+  it('supports job URLs and includes job source metadata in JSON output', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          '<html><body><h1>Backend Engineer</h1><p>TypeScript</p><p>Node.js</p></body></html>',
+          { headers: { 'content-type': 'text/html; charset=utf-8' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchImpl as typeof fetch);
+
+    const result = await invoke([
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      'https://boards.greenhouse.io/fictionalco/jobs/123',
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    const output = AnalysisEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(output.analysis.metadata.jobSource?.sourceClassification).toBe('official-ats');
+    expect(output.analysis.metadata.jobSource?.atsProvider).toBe('greenhouse');
+    expect(output.analysis.metadata.jobSource?.url).toBe(
+      'https://boards.greenhouse.io/fictionalco/jobs/123',
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('prints the required Markdown report sections', async () => {

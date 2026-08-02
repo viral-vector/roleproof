@@ -637,11 +637,16 @@
   font-size: 0.65rem;
 }
 
-.field-group label {
+.field-group label,
+.field-group h3 {
   font-family: var(--rp-font-display);
   font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+.field-group h3 {
+  margin: 0;
 }
 
 .field-group > p,
@@ -788,6 +793,88 @@ textarea:focus {
 
 textarea::placeholder {
   color: #9b9a94;
+}
+
+.job-source-card {
+  align-content: start;
+  background:
+    linear-gradient(135deg, rgba(243, 230, 200, 0.46), rgba(255, 253, 248, 0) 48%), #f8f5ed;
+}
+
+.job-url-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(18, 63, 99, 0.2);
+  border-radius: var(--rp-radius-sm);
+  background: rgba(255, 253, 248, 0.78);
+  padding: var(--rp-space-4);
+  box-shadow: inset 4px 0 0 rgba(18, 63, 99, 0.16);
+}
+
+.field-group .job-url-card {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: 0;
+}
+
+.job-url-label {
+  color: var(--rp-color-primary);
+  font-size: 0.84rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.job-url-copy,
+.job-url-note {
+  color: var(--rp-color-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.job-url-card input {
+  width: 100%;
+  border: 1px solid var(--rp-color-border-strong);
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-color-paper);
+  padding: 12px 13px;
+  color: var(--rp-color-ink);
+  font: inherit;
+  font-size: 0.92rem;
+  box-shadow: inset 0 1px 2px rgba(12, 35, 59, 0.04);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.job-url-card input:hover {
+  border-color: #938570;
+}
+
+.job-url-card input:focus {
+  border-color: var(--rp-color-primary);
+  box-shadow: 0 0 0 4px rgba(18, 63, 99, 0.09);
+  outline: 0;
+}
+
+.job-url-card input:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.job-url-card input::placeholder {
+  color: #9b9a94;
+}
+
+.field-group .job-text-label {
+  color: var(--rp-color-ink-soft);
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .form-footer {

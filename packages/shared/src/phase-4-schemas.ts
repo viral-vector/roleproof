@@ -7,6 +7,7 @@ import {
   ProviderDestinationSchema,
   ProviderIdSchema,
 } from './phase-3-schemas.js';
+import { LocalJobUrlSchema } from './phase-5-schemas.js';
 
 const MAX_LOCAL_API_TEXT_CHARS = 1_000_000;
 export const LOCAL_RESUME_TEXT_MAX_BYTES = 1_000_000;
@@ -18,6 +19,23 @@ const localApiTextSchema = z
   .min(1)
   .max(MAX_LOCAL_API_TEXT_CHARS)
   .refine((value) => value.trim().length > 0, { message: 'Text must not be blank' });
+
+const localJobTextSchema = z.string().max(MAX_LOCAL_API_TEXT_CHARS).optional();
+
+function validateJobInput(
+  request: { jobText?: string | undefined; jobUrl?: string | undefined },
+  context: z.RefinementCtx,
+): void {
+  const hasJobText = request.jobText !== undefined && request.jobText.trim().length > 0;
+  const hasJobUrl = request.jobUrl !== undefined;
+  if (!hasJobText && !hasJobUrl) {
+    context.addIssue({
+      code: 'custom',
+      message: 'A job description or job URL is required',
+      path: ['jobText'],
+    });
+  }
+}
 
 const safeFileNameSchema = z
   .string()
@@ -54,22 +72,26 @@ const LocalDeterministicAnalyzeRequestSchema = z
   .object({
     schemaVersion: z.literal('1.0'),
     resumeText: localApiTextSchema,
-    jobText: localApiTextSchema,
+    jobText: localJobTextSchema,
+    jobUrl: LocalJobUrlSchema.optional(),
     mode: z.literal('deterministic').default('deterministic'),
     resumeSource: LocalResumeSourceSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(validateJobInput);
 
 const LocalAIAnalyzeRequestSchema = z
   .object({
     schemaVersion: z.literal('1.0'),
     resumeText: localApiTextSchema,
-    jobText: localApiTextSchema,
+    jobText: localJobTextSchema,
+    jobUrl: LocalJobUrlSchema.optional(),
     mode: z.literal('ai-enhanced'),
     confirmProviderTransmission: z.literal(true),
     resumeSource: LocalResumeSourceSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(validateJobInput);
 
 export const LocalAnalyzeRequestSchema = z.union([
   LocalDeterministicAnalyzeRequestSchema,

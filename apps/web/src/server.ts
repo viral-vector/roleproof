@@ -17,6 +17,7 @@ import {
 import {
   DEFAULT_PARSER_CONFIG,
   ParserError,
+  parseJobUrlWithMetadata,
   parseDocx,
   parsePdf,
   parsePlaintext,
@@ -88,6 +89,7 @@ export interface LocalWebAppOptions {
   providerFactory?: (config: ProviderConfig) => AIProvider | Promise<AIProvider>;
   credentialStore?: ProviderCredentialStore;
   credentialEnvironment?: CredentialEnvironment;
+  jobUrlFetch?: typeof fetch;
 }
 
 export type { ProviderCredentialStore } from './credentials.js';
@@ -140,6 +142,44 @@ async function directoryExists(directory: string): Promise<boolean> {
   }
 }
 
+async function resolveJobInput(
+  request: { jobText?: string | undefined; jobUrl?: string | undefined },
+  fetchImpl: typeof fetch,
+) {
+  if (request.jobUrl !== undefined) {
+    try {
+      const fetched = await parseJobUrlWithMetadata(
+        request.jobUrl,
+        DEFAULT_PARSER_CONFIG,
+        fetchImpl,
+      );
+      return {
+        job: fetched.document,
+        jobSource: fetched.source,
+        jobContentSha256: fetched.contentSha256,
+      };
+    } catch {
+      throw new ParserError('fetch-failed', 'The job URL could not be fetched safely.');
+    }
+  }
+  const jobText = request.jobText ?? '';
+  return {
+    job: parsePlaintext(jobText, 'job'),
+    jobSource: undefined,
+    jobContentSha256: sha256(jobText),
+  };
+}
+
+function resolveJobTextForStorage(request: {
+  jobText?: string | undefined;
+  jobUrl?: string | undefined;
+}): string {
+  if (request.jobText !== undefined && request.jobText.trim().length > 0) {
+    return request.jobText;
+  }
+  return request.jobUrl ?? '';
+}
+
 async function resolveUiRoot(): Promise<string | null> {
   const candidates = [
     path.join(moduleDirectory, 'public'),
@@ -179,6 +219,7 @@ function safeRootAssetPath(uiRoot: string, url: string): string | null {
 
 export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInstance {
   const { repositories, databasePath } = options;
+  const jobUrlFetch = options.jobUrlFetch ?? fetch;
   const credentialStore = options.credentialStore ?? createDefaultProviderCredentialStore();
   const credentialEnvironment = options.credentialEnvironment ?? process.env;
   const providerFactory =
@@ -247,9 +288,23 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
 
     try {
       const resume = parsePlaintext(parsed.data.resumeText, 'resume');
-      const job = parsePlaintext(parsed.data.jobText, 'job');
+      const jobInput = resolveJobTextForStorage(parsed.data);
+      const jobRequest =
+        parsed.data.jobUrl === undefined
+          ? { jobText: jobInput }
+          : { jobText: jobInput, jobUrl: parsed.data.jobUrl };
+      const { job, jobSource, jobContentSha256 } = await resolveJobInput(jobRequest, jobUrlFetch);
       const candidateContext = emptyCandidateContext();
       let analysis: AnalysisResult = analyzeDeterministic({ resume, job, candidateContext });
+      if (jobSource !== undefined) {
+        analysis = {
+          ...analysis,
+          metadata: {
+            ...analysis.metadata,
+            jobSource,
+          },
+        };
+      }
       let storedAnalysis: PersistedAnalysis | undefined;
 
       if (repositories !== undefined) {
@@ -257,11 +312,13 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
           storedAnalysis = await persistAnalysis(
             repositories,
             parsed.data.resumeText,
-            parsed.data.jobText,
+            jobInput,
             resume,
             job,
             candidateContext,
             parsed.data.resumeSource,
+            jobSource,
+            jobContentSha256,
           );
           analysis = storedAnalysis.analysis;
         } catch (storageError) {
@@ -322,7 +379,19 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
         total: 4,
         message: 'Parsing job description.',
       });
-      const job = parsePlaintext(parsed.data.jobText, 'job');
+      const jobInput = resolveJobTextForStorage(parsed.data);
+      const jobRequest =
+        parsed.data.jobUrl === undefined
+          ? { jobText: jobInput }
+          : { jobText: jobInput, jobUrl: parsed.data.jobUrl };
+      const { job, jobSource, jobContentSha256 } =
+        parsed.data.jobUrl === undefined
+          ? {
+              job: parsePlaintext(jobInput, 'job'),
+              jobSource: undefined,
+              jobContentSha256: sha256(jobInput),
+            }
+          : await resolveJobInput(jobRequest, jobUrlFetch);
       const candidateContext = emptyCandidateContext();
       write({
         kind: 'progress',
@@ -332,17 +401,28 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
         message: 'Running baseline analysis.',
       });
       let analysis: AnalysisResult = analyzeDeterministic({ resume, job, candidateContext });
+      if (jobSource !== undefined) {
+        analysis = {
+          ...analysis,
+          metadata: {
+            ...analysis.metadata,
+            jobSource,
+          },
+        };
+      }
       let storedAnalysis: PersistedAnalysis | undefined;
       if (repositories !== undefined) {
         try {
           storedAnalysis = await persistAnalysis(
             repositories,
             parsed.data.resumeText,
-            parsed.data.jobText,
+            jobInput,
             resume,
             job,
             candidateContext,
             parsed.data.resumeSource,
+            jobSource,
+            jobContentSha256,
           );
           analysis = storedAnalysis.analysis;
         } catch (storageError) {
@@ -957,6 +1037,8 @@ async function persistAnalysis(
   job: ParsedDocument,
   candidateContext: CandidateContext,
   resumeSource?: LocalResumeSource,
+  jobSource?: NonNullable<AnalysisResult['metadata']['jobSource']>,
+  jobContentSha256 = sha256(jobText),
 ): Promise<PersistedAnalysis> {
   const profile = await repositories.profiles.ensureDefault();
   const profileId = profile.id;
@@ -1005,7 +1087,7 @@ async function persistAnalysis(
       schemaVersion: '1.0',
       id: job.id,
       format: 'plaintext',
-      contentSha256: sha256(jobText),
+      contentSha256: jobContentSha256,
       parsedContentSha256: sha256(job.text),
       text: job.text,
       confidence: job.confidence,
@@ -1013,9 +1095,12 @@ async function persistAnalysis(
     },
     requirements,
   );
+  if (jobSource !== undefined) {
+    await repositories.jobSources.saveSource({ ...jobSource, jobId: storedJob.id });
+  }
   const analysisJob = { ...job, id: storedJob.id };
   const analysisIdentityKey = resumeAnalysisIdentityKey(resumeSource);
-  const analysis = analyzeDeterministicWithEvidence(
+  let analysis = analyzeDeterministicWithEvidence(
     {
       resume: analysisResume,
       job: analysisJob,
@@ -1025,6 +1110,15 @@ async function persistAnalysis(
     },
     analysisIdentityKey === undefined ? {} : { analysisIdentityKey },
   );
+  if (jobSource !== undefined) {
+    analysis = {
+      ...analysis,
+      metadata: {
+        ...analysis.metadata,
+        jobSource,
+      },
+    };
+  }
   const existing = await repositories.analyses.get(analysis.id);
   if (existing !== undefined) {
     return { analysis: existing.result, requirements, evidence };
