@@ -547,6 +547,18 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
     try {
       const stored = await storage.analyses.get(id);
       if (stored === undefined) return reply.code(404).send({ error: 'Not found.' });
+      const enhancement = await storage.aiEnhancements.get(id);
+      if (enhancement !== undefined) {
+        return reply.send(
+          LocalAnalyzeResponseSchema.parse(
+            EnhancedAnalysisEnvelopeSchema.parse({
+              schemaVersion: '2.0',
+              analysis: stored.result,
+              aiEnhancement: enhancement.enhancement,
+            }),
+          ),
+        );
+      }
       return reply.send(
         LocalAnalyzeResponseSchema.parse({ schemaVersion: '1.0', analysis: stored.result }),
       );

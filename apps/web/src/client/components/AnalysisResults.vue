@@ -34,7 +34,7 @@ function formatLabel(value: string) {
 }
 
 function saveAnalysis(format: 'json' | 'markdown') {
-  downloadAnalysis(props.response.analysis, format);
+  downloadAnalysis(props.response, format);
 }
 </script>
 
@@ -148,6 +148,66 @@ function saveAnalysis(format: 'json' | 'markdown') {
             }}</span>
             <p>{{ item.text }}</p>
             <small>{{ item.explanation }}</small>
+          </li>
+        </ul>
+      </section>
+      <section class="ai-output-section">
+        <h4>AI Suggested Additions</h4>
+        <ul class="evidence-list compact-list">
+          <li
+            v-for="item in aiEnhancement!.applicationSuggestions.suggestedAdditions"
+            :key="item.text"
+          >
+            <span class="classification" :data-classification="item.classification">{{
+              formatLabel(item.classification)
+            }}</span>
+            <p>{{ item.text }}</p>
+            <small>{{ item.explanation }}</small>
+          </li>
+        </ul>
+      </section>
+      <section class="ai-output-section">
+        <h4>AI Interview Topics</h4>
+        <ul class="topic-list">
+          <li
+            v-for="item in aiEnhancement!.applicationSuggestions.interviewTopics"
+            :key="item.topic"
+          >
+            {{ item.topic }}
+            <small v-if="item.rationale">{{ item.rationale }}</small>
+          </li>
+        </ul>
+      </section>
+      <section class="ai-output-section">
+        <h4>AI Cover-Letter Angles</h4>
+        <ul class="topic-list">
+          <li
+            v-for="item in aiEnhancement!.applicationSuggestions.coverLetterAngles"
+            :key="item.text"
+          >
+            {{ item.text }}
+          </li>
+        </ul>
+      </section>
+      <section class="ai-output-section">
+        <h4>Provider Metadata</h4>
+        <ul class="provider-metadata-list">
+          <li
+            v-for="execution in aiEnhancement!.providerExecutions"
+            :key="`${execution.operation}-${execution.requestId ?? 'x'}`"
+          >
+            <span>
+              {{ formatLabel(execution.operation) }} &middot;
+              {{ execution.provider }} / {{ execution.model }}
+            </span>
+            <small>
+              {{ formatLabel(execution.destination) }} &middot;
+              {{ execution.manifest.endpointOrigin }} &middot;
+              {{ execution.manifest.redactionApplied ? 'redaction applied' : 'no redaction' }}
+              <template v-if="execution.usage.totalTokens != null">
+                &middot; {{ execution.usage.totalTokens }} tokens
+              </template>
+            </small>
           </li>
         </ul>
       </section>

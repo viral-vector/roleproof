@@ -456,6 +456,33 @@ describe('local AI analyze API', () => {
     }
   });
 
+  it('returns the stored AI enhancement from history detail', async () => {
+    const calls: string[] = [];
+    const { app, database, repositories } = await appWithAIProvider((config) =>
+      successfulProvider(config, calls),
+    );
+
+    try {
+      await configureLocalProvider(repositories);
+      const analyzed = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: aiAnalyzePayload(resumeText, jobText),
+      });
+      const analysisId = (JSON.parse(analyzed.body) as { analysis: { id: string } }).analysis.id;
+
+      const detail = await app.inject({ method: 'GET', url: `/api/history/${analysisId}` });
+      const body = LocalAnalyzeResponseSchema.parse(JSON.parse(detail.body));
+
+      expect(detail.statusCode).toBe(200);
+      expect(body.schemaVersion).toBe('2.0');
+      if (body.schemaVersion !== '2.0') throw new Error('Expected enhanced detail');
+      expect(body.aiEnhancement.baselineAnalysisId).toBe(analysisId);
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
   it('falls back to the deterministic envelope and records a provider failure', async () => {
     const calls: string[] = [];
     const { app, database, repositories } = await appWithAIProvider((config) => ({

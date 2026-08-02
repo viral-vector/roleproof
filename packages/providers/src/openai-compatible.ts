@@ -117,7 +117,9 @@ function nestedEvidenceIds(value: unknown): string[] {
     ...new Set(
       value.requirements
         .filter(isRecord)
-        .flatMap((item) => (Array.isArray(item.evidenceIds) ? item.evidenceIds : []))
+        .flatMap((item) =>
+          Array.isArray(item.evidenceIds) ? (item.evidenceIds as unknown[]) : [],
+        )
         .filter((id): id is string => typeof id === 'string'),
     ),
   ].sort();
@@ -193,7 +195,7 @@ function replaceId(record: Record<string, unknown>, field: string, ids: Readonly
 
 function replaceEvidenceIds(record: Record<string, unknown>, ids: ReadonlyMap<string, string>) {
   if (!Array.isArray(record.evidenceIds)) return;
-  record.evidenceIds = record.evidenceIds.map((id) =>
+  record.evidenceIds = (record.evidenceIds as unknown[]).map((id) =>
     typeof id === 'string' ? (ids.get(id) ?? id) : id,
   );
 }

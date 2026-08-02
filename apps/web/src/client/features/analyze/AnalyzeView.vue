@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import type { LocalAnalyzeResponse } from '@roleproof/shared';
+import { computed, ref, watch } from 'vue';
+import type { LocalAnalyzeResponse, LocalSettings } from '@roleproof/shared';
 
-import { analyzeLocalStream, parseResumeFile } from '../../api/client.js';
+import { analyzeLocalStream, getSettings, parseResumeFile } from '../../api/client.js';
 import AnalysisResults from '../../components/AnalysisResults.vue';
 import PrimaryButton from '../../components/PrimaryButton.vue';
 import TextareaField from '../../components/TextareaField.vue';
@@ -21,10 +21,86 @@ const progressStage = ref('');
 const progressCompleted = ref(0);
 const progressTotal = ref(1);
 const progressMessage = ref('');
+const disclosureSettings = ref<LocalSettings | null>(null);
+const disclosureLoading = ref(false);
+const disclosureError = ref('');
 
 const progressPercent = computed(() =>
   Math.round((progressCompleted.value / progressTotal.value) * 100),
 );
+
+const disclosureConfigured = computed(
+  () => disclosureSettings.value?.provider != null && disclosureSettings.value?.model != null,
+);
+
+const effectiveDestination = computed(() => {
+  const settings = disclosureSettings.value;
+  if (settings?.destination != null) return settings.destination;
+  return settings?.provider === 'openai' ? 'hosted' : 'local';
+});
+
+const providerLabel = computed(() => {
+  const provider = disclosureSettings.value?.provider;
+  if (provider === 'openai') return 'OpenAI (hosted)';
+  if (provider === 'openai-compatible') return 'OpenAI-compatible (custom)';
+  return 'Not configured';
+});
+
+const modelLabel = computed(() => disclosureSettings.value?.model ?? 'Not configured');
+
+const destinationLabel = computed(() => {
+  switch (effectiveDestination.value) {
+    case 'hosted':
+      return 'Hosted';
+    case 'custom':
+      return 'Custom endpoint';
+    case 'local':
+      return 'Local (this machine)';
+  }
+});
+
+const endpointLabel = computed(() => {
+  const baseUrl = disclosureSettings.value?.baseUrl;
+  if (baseUrl != null && baseUrl.trim().length > 0) return baseUrl;
+  if (disclosureSettings.value?.provider === 'openai') return 'https://api.openai.com';
+  return 'Provider default endpoint';
+});
+
+const redactionLabel = computed(() => {
+  const settings = disclosureSettings.value;
+  if (settings == null) return 'None';
+  const parts: string[] = [];
+  if (settings.redactEmployer === true) parts.push('Employer names');
+  if (settings.redactClearance === true) parts.push('Clearance details');
+  if (settings.redactionTerms != null && settings.redactionTerms.length > 0) {
+    parts.push(settings.redactionTerms.join(', '));
+  }
+  return parts.length > 0 ? parts.join('; ') : 'None';
+});
+
+const dataLeavesMachine = computed(
+  () => effectiveDestination.value === 'hosted' || effectiveDestination.value === 'custom',
+);
+
+async function loadDisclosure() {
+  disclosureLoading.value = true;
+  disclosureError.value = '';
+  confirmProviderTransmission.value = false;
+  try {
+    const response = await getSettings();
+    disclosureSettings.value = response.settings;
+  } catch (cause) {
+    disclosureSettings.value = null;
+    disclosureError.value =
+      cause instanceof Error ? cause.message : 'Provider configuration is unavailable.';
+  } finally {
+    disclosureLoading.value = false;
+  }
+}
+
+watch(analysisMode, (mode) => {
+  if (mode === 'ai-enhanced') void loadDisclosure();
+});
 
 function updateProgress(event: {
   stage: string;
@@ -175,12 +251,64 @@ async function runAnalysis() {
               <span>AI-enhanced analysis</span>
             </label>
           </div>
-          <label v-if="analysisMode === 'ai-enhanced'" class="confirmation-check">
-            <input v-model="confirmProviderTransmission" type="checkbox" :disabled="running" />
-            <span>
-              I confirm RoleProof may send redacted analysis inputs to the configured provider.
-            </span>
-          </label>
+          <section
+            v-if="analysisMode === 'ai-enhanced'"
+            class="provider-disclosure"
+            aria-labelledby="provider-disclosure-title"
+          >
+            <div class="disclosure-heading">
+              <p class="panel-kicker">Before transmission</p>
+              <h4 id="provider-disclosure-title">AI transmission disclosure</h4>
+            </div>
+            <p v-if="disclosureLoading" class="disclosure-note" role="status">
+              Loading provider configuration...
+            </p>
+            <template v-else>
+              <p v-if="disclosureError" class="disclosure-warning" role="alert">
+                {{ disclosureError }}
+              </p>
+              <dl v-else class="disclosure-list">
+                <div>
+                  <dt>Provider</dt>
+                  <dd>{{ providerLabel }}</dd>
+                </div>
+                <div>
+                  <dt>Model</dt>
+                  <dd>{{ modelLabel }}</dd>
+                </div>
+                <div>
+                  <dt>Destination</dt>
+                  <dd>{{ destinationLabel }}</dd>
+                </div>
+                <div>
+                  <dt>Endpoint</dt>
+                  <dd>{{ endpointLabel }}</dd>
+                </div>
+                <div>
+                  <dt>Redaction</dt>
+                  <dd>{{ redactionLabel }}</dd>
+                </div>
+              </dl>
+              <p v-if="dataLeavesMachine" class="disclosure-warning" role="note">
+                Redacted analysis inputs will leave this machine and be sent to
+                {{ endpointLabel }}.
+              </p>
+              <p v-if="!disclosureConfigured" class="disclosure-warning" role="alert">
+                No AI provider is configured. Open Settings and configure a provider before
+                AI-enhanced analysis.
+              </p>
+            </template>
+            <label class="confirmation-check">
+              <input
+                v-model="confirmProviderTransmission"
+                type="checkbox"
+                :disabled="running || disclosureLoading || !disclosureConfigured"
+              />
+              <span>
+                I confirm RoleProof may send redacted analysis inputs to the configured provider.
+              </span>
+            </label>
+          </section>
         </section>
 
         <footer class="form-footer">

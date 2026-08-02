@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 import { expect, test } from '@playwright/test';
-import { AnalysisEnvelopeSchema } from '@roleproof/shared';
+import { AnalysisEnvelopeSchema, EnhancedAnalysisEnvelopeSchema } from '@roleproof/shared';
 
 import { createDocx } from '@roleproof/test-utils';
 
@@ -95,6 +95,62 @@ test('shows an actionable message when the resume file cannot be parsed', async 
   await expect(page.getByRole('alert')).toContainText('The DOCX file could not be read');
 });
 
+test('discloses the configured AI provider, destination, endpoint, and redaction before consent', async ({
+  page,
+}) => {
+  const save = await page.request.put('/api/settings', {
+    data: {
+      provider: 'openai-compatible',
+      model: 'fictional-model',
+      destination: 'local',
+      baseUrl: 'http://localhost:11434/v1',
+      redactEmployer: true,
+      redactClearance: false,
+      redactionTerms: ['Project Hermes'],
+      structuredOutputMode: 'json-schema',
+    },
+  });
+  expect(save.ok()).toBeTruthy();
+
+  await page.goto('/analyze');
+  await page.getByLabel('AI-enhanced analysis').check();
+
+  await expect(page.getByText('AI transmission disclosure')).toBeVisible();
+  await expect(page.getByText('OpenAI-compatible')).toBeVisible();
+  await expect(page.getByText('fictional-model')).toBeVisible();
+  await expect(page.getByText('http://localhost:11434/v1')).toBeVisible();
+  await expect(page.getByText('Employer names')).toBeVisible();
+  await expect(page.getByText('Project Hermes')).toBeVisible();
+
+  const saveHosted = await page.request.put('/api/settings', {
+    data: {
+      provider: 'openai',
+      model: 'fictional-model',
+      destination: 'hosted',
+      redactEmployer: false,
+    },
+  });
+  expect(saveHosted.ok()).toBeTruthy();
+
+  await page.reload();
+  await page.getByLabel('AI-enhanced analysis').check();
+  await expect(page.getByText('Redacted analysis inputs will leave this machine')).toBeVisible();
+
+  const reset = await page.request.put('/api/settings', {
+    data: {
+      provider: null,
+      model: null,
+      destination: null,
+      baseUrl: null,
+      redactEmployer: false,
+      redactClearance: false,
+      redactionTerms: [],
+      structuredOutputMode: null,
+    },
+  });
+  expect(reset.ok()).toBeTruthy();
+});
+
 test.describe('mobile layout', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
@@ -104,4 +160,146 @@ test.describe('mobile layout', () => {
     await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Start a comparison' })).toBeVisible();
   });
+});
+
+test('renders AI enhancement sections and keeps them in exports', async ({ page }) => {
+  const envelope = EnhancedAnalysisEnvelopeSchema.parse({
+    schemaVersion: '2.0',
+    analysis: AnalysisEnvelopeSchema.parse({
+      schemaVersion: '1.0',
+      analysis: {
+        schemaVersion: '1.0',
+        id: 'analysis-fictional-enhanced',
+        overallScore: 55,
+        recommendation: 'stretch',
+        confidence: 0.6,
+        hardBlockers: [],
+        matchedRequirements: [],
+        missingRequirements: [],
+        unsupportedClaims: [],
+        suggestedEmphasis: [],
+        suggestedAdditions: [],
+        interviewTopics: [],
+        generatedAt: '2026-01-01T00:00:00.000Z',
+        metadata: { mode: 'deterministic', engineVersion: '0.4.0' },
+      },
+    }).analysis,
+    aiEnhancement: {
+      schemaVersion: '1.0',
+      baselineAnalysisId: 'analysis-fictional-enhanced',
+      requirementAnalysis: {
+        requirements: [
+          {
+            requirementId: 'r1',
+            baselineClassification: 'strongly-related',
+            classification: 'strongly-related',
+            evidenceIds: ['ev-1'],
+            explanation: 'Fictional provider interpretation.',
+          },
+        ],
+      },
+      evidenceMapping: {
+        mappings: [
+          {
+            requirementId: 'r1',
+            baselineClassification: 'strongly-related',
+            classification: 'strongly-related',
+            evidenceIds: ['ev-1'],
+            explanation: 'Fictional evidence mapping.',
+          },
+        ],
+      },
+      applicationSuggestions: {
+        suggestedEmphasis: [
+          {
+            text: 'Emphasize fictional TypeScript services',
+            classification: 'strongly-related',
+            evidenceIds: ['ev-1'],
+            explanation: 'Fictional emphasis.',
+          },
+        ],
+        suggestedAdditions: [
+          {
+            text: 'Add fictional project with user confirmation',
+            classification: 'requires-user-confirmation',
+            evidenceIds: ['ev-1'],
+            explanation: 'Fictional addition.',
+          },
+        ],
+        interviewTopics: [
+          { topic: 'Fictional topic', evidenceIds: ['ev-1'], rationale: 'Fictional rationale.' },
+        ],
+        coverLetterAngles: [{ text: 'Fictional cover-letter angle', evidenceIds: ['ev-1'] }],
+      },
+      providerExecutions: [
+        {
+          operation: 'analyze-requirements',
+          provider: 'openai-compatible',
+          model: 'fictional-model',
+          destination: 'local',
+          manifest: {
+            provider: 'openai-compatible',
+            model: 'fictional-model',
+            destination: 'local',
+            endpointOrigin: 'http://localhost:11434',
+            dataCategories: ['requirement-text'],
+            redactionApplied: true,
+            redactionSummary: {
+              categories: [],
+              replacementCount: 1,
+              inputChars: 10,
+              outputChars: 10,
+            },
+          },
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, costMicroUsd: null },
+          requestId: 'request-fictional',
+          errorCode: null,
+        },
+      ],
+    },
+  });
+
+  await page.route('**/api/analyze/stream', async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson; charset=utf-8' },
+      body: [
+        JSON.stringify({
+          kind: 'progress',
+          stage: 'complete',
+          completed: 4,
+          total: 4,
+          message: 'Analysis complete.',
+        }),
+        JSON.stringify({ kind: 'result', response: envelope }),
+      ].join('\n') + '\n',
+    });
+  });
+
+  await page.goto('/analyze');
+  await page.getByLabel('Resume text').fill(resumeText);
+  await page.getByLabel('Job description').fill(jobText);
+  await page.getByRole('button', { name: 'Analyze role fit' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
+  await expect(page.getByText('AI Requirement Interpretations')).toBeVisible();
+  await expect(page.getByText('AI Suggested Additions')).toBeVisible();
+  await expect(page.getByText('AI Interview Topics')).toBeVisible();
+  await expect(page.getByText('AI Cover-Letter Angles')).toBeVisible();
+  await expect(page.getByText('Provider Metadata')).toBeVisible();
+  await expect(page.getByText('fictional-model')).toBeVisible();
+
+  const jsonDownloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download JSON' }).click();
+  const jsonDownload = await jsonDownloadPromise;
+  const jsonPath = await jsonDownload.path();
+  const parsed = EnhancedAnalysisEnvelopeSchema.parse(JSON.parse(await readFile(jsonPath, 'utf8')));
+  expect(parsed.schemaVersion).toBe('2.0');
+  expect(parsed.aiEnhancement.providerExecutions[0]!.model).toBe('fictional-model');
+
+  const markdownDownloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download Markdown' }).click();
+  const markdownDownload = await markdownDownloadPromise;
+  const markdownPath = await markdownDownload.path();
+  expect(await readFile(markdownPath, 'utf8')).toContain('## AI Enhancement');
 });

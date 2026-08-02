@@ -33,6 +33,18 @@ describe('local UI structure', () => {
     expect(results).toContain('AI Requirement Interpretations');
   });
 
+  it('renders the complete AI enhancement in results and downloads', async () => {
+    const results = await readClientFile('components/AnalysisResults.vue');
+
+    expect(results).toContain('AI Evidence Mappings');
+    expect(results).toContain('AI Suggested Additions');
+    expect(results).toContain('AI Interview Topics');
+    expect(results).toContain('AI Cover-Letter Angles');
+    expect(results).toContain('Provider Metadata');
+    expect(results).toContain('aiEnhancement!.providerExecutions');
+    expect(results).toContain('downloadAnalysis(props.response, format)');
+  });
+
   it('keeps file input and analysis submission on the analyze screen only', async () => {
     const analyze = await readClientFile('features/analyze/AnalyzeView.vue');
 
@@ -48,6 +60,21 @@ describe('local UI structure', () => {
     expect(analyze).toContain(':aria-busy="running"');
     expect(analyze).toContain('<AnalysisResults');
     expect(analyze).not.toContain('Eligibility blockers');
+  });
+
+  it('discloses the configured AI provider before transmission consent', async () => {
+    const analyze = await readClientFile('features/analyze/AnalyzeView.vue');
+
+    expect(analyze).toContain('getSettings');
+    expect(analyze).toContain('AI transmission disclosure');
+    expect(analyze).toContain('Provider');
+    expect(analyze).toContain('Model');
+    expect(analyze).toContain('Destination');
+    expect(analyze).toContain('Endpoint');
+    expect(analyze).toContain('Redaction');
+    expect(analyze).toContain('Redacted analysis inputs will leave this machine');
+    expect(analyze).toContain('No AI provider is configured');
+    expect(analyze).toContain(':disabled="running || disclosureLoading || !disclosureConfigured"');
   });
 
   it('separates the landing hero from the analysis comparison workspace', async () => {

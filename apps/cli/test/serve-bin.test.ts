@@ -73,7 +73,13 @@ describe('built roleproof serve executable', () => {
       expect(settings.status).toBe(200);
       await expect(settings.json()).resolves.toEqual({
         schemaVersion: '1.0',
-        settings: {},
+        settings: {
+          provider: 'openai-compatible',
+          model: 'phi4-mini:latest',
+          destination: 'local',
+          baseUrl: 'http://localhost:11434/v1',
+          structuredOutputMode: 'json-schema',
+        },
         databasePath,
       });
     } finally {

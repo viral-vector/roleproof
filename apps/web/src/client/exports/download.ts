@@ -1,5 +1,5 @@
-import { renderJson, renderMarkdown } from '@roleproof/reporters';
-import type { AnalysisResult } from '@roleproof/shared';
+import { renderEnhancedJson, renderJson, renderEnhancedMarkdown, renderMarkdown } from '@roleproof/reporters';
+import type { LocalAnalyzeResponse } from '@roleproof/shared';
 
 export type AnalysisDownloadFormat = 'json' | 'markdown';
 
@@ -10,26 +10,38 @@ export interface AnalysisDownload {
 }
 
 export function createAnalysisDownload(
-  analysis: AnalysisResult,
+  response: LocalAnalyzeResponse,
   format: AnalysisDownloadFormat,
 ): AnalysisDownload {
+  const analysis = response.analysis;
+  const enhancement =
+    response.schemaVersion === '2.0' ? response.aiEnhancement : undefined;
   if (format === 'json') {
     return {
       filename: 'roleproof-analysis.json',
       mimeType: 'application/json;charset=utf-8',
-      content: renderJson(analysis),
+      content:
+        enhancement === undefined
+          ? renderJson(analysis)
+          : renderEnhancedJson(analysis, enhancement),
     };
   }
 
   return {
     filename: 'roleproof-analysis.md',
     mimeType: 'text/markdown;charset=utf-8',
-    content: renderMarkdown(analysis),
+    content:
+      enhancement === undefined
+        ? renderMarkdown(analysis)
+        : renderEnhancedMarkdown(analysis, enhancement),
   };
 }
 
-export function downloadAnalysis(analysis: AnalysisResult, format: AnalysisDownloadFormat): void {
-  const download = createAnalysisDownload(analysis, format);
+export function downloadAnalysis(
+  response: LocalAnalyzeResponse,
+  format: AnalysisDownloadFormat,
+): void {
+  const download = createAnalysisDownload(response, format);
   const url = URL.createObjectURL(new Blob([download.content], { type: download.mimeType }));
   const link = document.createElement('a');
   link.href = url;

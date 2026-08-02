@@ -558,7 +558,10 @@ describe('OpenAI-compatible adapter', () => {
     );
 
     const result = await provider.analyzeRequirements(call);
-    const body = JSON.parse(fetchMock.mock.calls[0]![1]?.body as string) as Record<string, unknown>;
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]?.body as string) as {
+      messages: Array<Record<string, unknown>>;
+      response_format?: { json_schema?: { schema?: Record<string, unknown> } };
+    };
 
     expect(result.output).toEqual(outputs.requirements);
     expect(body).toHaveProperty(
@@ -567,7 +570,9 @@ describe('OpenAI-compatible adapter', () => {
     );
     expect(body.messages).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ content: expect.stringContaining('"requirementId":"r1"') }),
+        expect.objectContaining({
+          content: expect.stringContaining('"requirementId":"r1"') as unknown as string,
+        }),
       ]),
     );
     expect(JSON.stringify(body.messages)).not.toContain('"requirementId":"req-1"');
