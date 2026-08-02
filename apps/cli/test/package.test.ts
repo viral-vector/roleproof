@@ -39,6 +39,7 @@ describe('@roleproof/cli package export', () => {
   it('builds all workspace artifacts before packing any publishable package', () => {
     const packages: Array<[packagePath: string, directory: string]> = [
       ['apps/cli/package.json', 'apps/cli'],
+      ['apps/web/package.json', 'apps/web'],
       ['packages/core/package.json', 'packages/core'],
       ['packages/parsers/package.json', 'packages/parsers'],
       ['packages/providers/package.json', 'packages/providers'],
@@ -58,7 +59,7 @@ describe('@roleproof/cli package export', () => {
         version?: string;
       };
       expect(packageJson.scripts?.prepack, packagePath).toBe('pnpm --dir ../.. build');
-      expect(packageJson.version, packagePath).toBe('0.3.0');
+      expect(packageJson.version, packagePath).toBe('0.4.0');
       expect(packageJson.private, packagePath).toBe(false);
       expect(packageJson.publishConfig, packagePath).toEqual({ access: 'public' });
       expect(packageJson.engines?.node, packagePath).toBe('>=22.0.0 <25');
@@ -71,11 +72,12 @@ describe('@roleproof/cli package export', () => {
     }
   });
 
-  it('documents the v0.3.0 release without overstating product outcomes', () => {
+  it('documents the v0.4.0 release without overstating product outcomes', () => {
     const changelog = readFileSync('CHANGELOG.md', 'utf8');
 
-    expect(changelog).toContain('## 0.3.0 - 2026-07-30');
-    expect(changelog).toContain('optional AI provider');
+    expect(changelog).toContain('## 0.4.0 - 2026-08-02');
+    expect(changelog).toContain('local web UI');
+    expect(changelog).toContain('AI-enhanced browser analysis');
     expect(changelog).toContain('deterministic');
     expect(changelog).not.toMatch(/interview probability|hiring probability/iu);
   });

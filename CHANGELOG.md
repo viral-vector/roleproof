@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0 - 2026-08-02
+
+RoleProof's local web UI release for browser-based deterministic analysis, optional AI-enhanced
+guidance, local history, settings, and provider consent workflows.
+
+### Phase 4 Local Web UI
+
+- Added the local Fastify/Vue web UI behind `roleproof serve`, including pasted text, TXT/PDF/DOCX
+  résumé upload, deterministic analysis, JSON/Markdown downloads, local history search/detail views,
+  and settings.
+- Added AI-enhanced browser analysis using the same provider layer and schemas as the CLI, with
+  visible provider destination, endpoint, redaction categories, consent invalidation, and labeled
+  deterministic fallback when enhancement is unavailable.
+- Preserved local-first privacy: selected files are not parsed or sent until analysis is explicitly
+  run, model-list and health checks send no career content, and browser uploads remain local unless a
+  configured provider is explicitly confirmed.
+- Added source-aware résumé provenance and analysis identity so uploaded file format, safe filename,
+  content hash, confidence, and parser warnings remain auditable without turning related experience
+  into direct evidence.
+- Added browser end-to-end validation in CI with Playwright Chromium and automatic cleanup of
+  temporary E2E SQLite databases.
+
 ## 0.3.0 - 2026-07-30
 
 RoleProof's optional AI provider release for evidence-constrained enhancement of deterministic
