@@ -10,6 +10,7 @@ import type {
   ProviderExecutionMetadata,
   ProviderHealth,
   ProviderId,
+  LocalProviderModel,
   ProviderOperation,
   RequirementAnalysisInput,
   RequirementAnalysisOutput,
@@ -40,6 +41,7 @@ export interface AIProvider {
     context: ProviderCallContext<ApplicationSuggestionInput>,
   ): Promise<ProviderResult<ApplicationSuggestionOutput>>;
   healthCheck(): Promise<ProviderResult<ProviderHealth>>;
+  listModels(): Promise<ProviderResult<{ models: readonly LocalProviderModel[] }>>;
 }
 
 export interface SanitizedProviderError {

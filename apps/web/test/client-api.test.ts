@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   analyzeLocal,
+  analyzeLocalStream,
+  deleteProviderCredential,
   deleteHistoryItem,
+  getProviderCredentialStatus,
   getHealth,
   getHistoryItem,
   getSettings,
   listHistory,
+  listProviderModels,
   parseResumeFile,
+  saveProviderCredential,
   updateSettings,
 } from '../src/client/api/client.js';
 
@@ -96,12 +101,125 @@ describe('client API contract', () => {
     });
   });
 
+  it('posts AI-enhanced analyze requests only with explicit transmission confirmation', async () => {
+    const { calls, fetchImpl } = fetchStub(
+      jsonResponse({
+        schemaVersion: '1.0',
+        analysis: {
+          schemaVersion: '1.0',
+          id: 'analysis-client-ai-fallback',
+          overallScore: 50,
+          recommendation: 'stretch',
+          confidence: 0.75,
+          hardBlockers: [],
+          matchedRequirements: [],
+          missingRequirements: [],
+          unsupportedClaims: [],
+          suggestedEmphasis: [],
+          suggestedAdditions: [],
+          interviewTopics: [],
+          generatedAt: '2026-01-01T00:00:00.000Z',
+          metadata: { mode: 'deterministic', engineVersion: '0.3.0' },
+        },
+      }),
+    );
+
+    await analyzeLocal(
+      {
+        resumeText: 'Fictional resume text',
+        jobText: 'Fictional job text',
+        mode: 'ai-enhanced',
+        confirmProviderTransmission: true,
+      },
+      fetchImpl,
+    );
+
+    const body = calls[0]?.[1]?.body;
+    expect(typeof body).toBe('string');
+    expect(JSON.parse(body as string)).toEqual({
+      schemaVersion: '1.0',
+      mode: 'ai-enhanced',
+      confirmProviderTransmission: true,
+      resumeText: 'Fictional resume text',
+      jobText: 'Fictional job text',
+    });
+  });
+
+  it('rejects AI-enhanced analyze requests without confirmation before posting content', async () => {
+    const { calls, fetchImpl } = fetchStub(jsonResponse({ schemaVersion: '1.0' }));
+
+    await expect(
+      analyzeLocal(
+        {
+          resumeText: 'Fictional resume text',
+          jobText: 'Fictional job text',
+          mode: 'ai-enhanced',
+          confirmProviderTransmission: false,
+        },
+        fetchImpl,
+      ),
+    ).rejects.toThrow('AI-enhanced analysis requires provider transmission confirmation.');
+    expect(calls).toEqual([]);
+  });
+
   it('returns content-free errors for failed analyze requests', async () => {
     const { fetchImpl } = fetchStub(jsonResponse({ error: 'PRIVATE CONTENT' }, { status: 400 }));
 
     await expect(
       analyzeLocal({ resumeText: '   ', jobText: 'Required: TypeScript' }, fetchImpl),
     ).rejects.toThrow('Analysis request failed. Check the supplied text.');
+  });
+
+  it('reads progress events and the final analysis from a streaming analyze request', async () => {
+    const events = [
+      JSON.stringify({
+        kind: 'progress',
+        stage: 'baseline-analysis',
+        completed: 1,
+        total: 4,
+        message: 'Baseline complete.',
+      }),
+      JSON.stringify({
+        kind: 'result',
+        response: {
+          schemaVersion: '1.0',
+          analysis: {
+            schemaVersion: '1.0',
+            id: 'analysis-client-stream',
+            overallScore: 50,
+            recommendation: 'stretch',
+            confidence: 0.75,
+            hardBlockers: [],
+            matchedRequirements: [],
+            missingRequirements: [],
+            unsupportedClaims: [],
+            suggestedEmphasis: [],
+            suggestedAdditions: [],
+            interviewTopics: [],
+            generatedAt: '2026-01-01T00:00:00.000Z',
+            metadata: { mode: 'deterministic', engineVersion: '0.3.0' },
+          },
+        },
+      }),
+    ].join('\n');
+    const { calls, fetchImpl } = fetchStub(
+      new Response(`${events}\n`, {
+        status: 200,
+        headers: { 'content-type': 'application/x-ndjson' },
+      }),
+    );
+    const seen: string[] = [];
+
+    const result = await analyzeLocalStream(
+      { resumeText: 'Fictional resume text', jobText: 'Fictional job text' },
+      { onEvent: (event) => seen.push(event.kind) },
+      fetchImpl,
+    );
+
+    expect(result.analysis.id).toBe('analysis-client-stream');
+    expect(seen).toEqual(['progress', 'result']);
+    expect(calls[0]?.[0]).toBe('/api/analyze/stream');
+    expect(calls[0]?.[1]?.headers).toMatchObject({ accept: 'application/x-ndjson' });
   });
 
   it('uploads a selected resume only when parsing is explicitly requested', async () => {
@@ -420,5 +538,93 @@ describe('settings client API', () => {
     await expect(updateSettings({ defaultExportFormat: 'json' }, fetchImpl)).rejects.toThrow(
       'Settings could not be saved. Check the local server and try again.',
     );
+  });
+
+  it('fetches provider credential status without API keys', async () => {
+    const { calls, fetchImpl } = fetchStub(
+      jsonResponse({
+        schemaVersion: '1.0',
+        credentials: [
+          { provider: 'openai', configured: true, source: 'key-store' },
+          { provider: 'openai-compatible', configured: false, source: 'none' },
+        ],
+      }),
+    );
+
+    await expect(getProviderCredentialStatus(fetchImpl)).resolves.toEqual({
+      schemaVersion: '1.0',
+      credentials: [
+        { provider: 'openai', configured: true, source: 'key-store' },
+        { provider: 'openai-compatible', configured: false, source: 'none' },
+      ],
+    });
+    expect(calls).toEqual([['/api/provider-credentials', undefined]]);
+  });
+
+  it('lists provider models through a query-only local request', async () => {
+    const { calls, fetchImpl } = fetchStub(
+      jsonResponse({
+        schemaVersion: '1.0',
+        models: [{ id: 'phi4-mini:latest', structuredOutputSupported: null }],
+      }),
+    );
+
+    await expect(
+      listProviderModels(
+        {
+          provider: 'openai-compatible',
+          destination: 'local',
+          baseUrl: 'http://localhost:11434/v1',
+        },
+        fetchImpl,
+      ),
+    ).resolves.toMatchObject({ models: [{ id: 'phi4-mini:latest' }] });
+    expect(calls[0]?.[0]).toBe(
+      '/api/provider-models?provider=openai-compatible&destination=local&baseUrl=http%3A%2F%2Flocalhost%3A11434%2Fv1',
+    );
+    expect(calls[0]?.[1]).toBeUndefined();
+  });
+
+  it('saves and deletes provider credentials without parsing echoed secrets', async () => {
+    const { calls, fetchImpl } = fetchStub(
+      jsonResponse({
+        schemaVersion: '1.0',
+        credentials: [
+          { provider: 'openai', configured: true, source: 'key-store' },
+          { provider: 'openai-compatible', configured: false, source: 'none' },
+        ],
+      }),
+    );
+
+    await saveProviderCredential({ provider: 'openai', apiKey: 'fictional-secret' }, fetchImpl);
+    const [saveUrl, saveInit] = calls[0]!;
+    expect(saveUrl).toBe('/api/provider-credentials');
+    expect(saveInit).toMatchObject({
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(JSON.parse(saveInit?.body as string)).toEqual({
+      provider: 'openai',
+      apiKey: 'fictional-secret',
+    });
+
+    const { calls: deleteCalls, fetchImpl: deleteFetch } = fetchStub(
+      jsonResponse({ removed: true }),
+    );
+    await expect(deleteProviderCredential('openai', deleteFetch)).resolves.toEqual({
+      removed: true,
+    });
+    expect(deleteCalls).toEqual([
+      ['/api/provider-credentials/openai', expect.objectContaining({ method: 'DELETE' })],
+    ]);
+  });
+
+  it('rejects invalid credential saves before making a request', async () => {
+    const { calls, fetchImpl } = fetchStub(jsonResponse({ error: 'not used' }));
+
+    await expect(
+      saveProviderCredential({ provider: 'openai', apiKey: '   ' }, fetchImpl),
+    ).rejects.toThrow('Provider credential is invalid. Enter a non-empty API key.');
+    expect(calls).toEqual([]);
   });
 });

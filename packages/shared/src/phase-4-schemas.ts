@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 import { AnalysisEnvelopeSchema, ParseWarningSchema } from './phase-1-schemas.js';
 import { AnalysisHistoryItemSchema } from './phase-2-schemas.js';
+import {
+  EnhancedAnalysisEnvelopeSchema,
+  ProviderDestinationSchema,
+  ProviderIdSchema,
+} from './phase-3-schemas.js';
 
 const MAX_LOCAL_API_TEXT_CHARS = 1_000_000;
 export const LOCAL_RESUME_TEXT_MAX_BYTES = 1_000_000;
@@ -14,7 +19,7 @@ const localApiTextSchema = z
   .max(MAX_LOCAL_API_TEXT_CHARS)
   .refine((value) => value.trim().length > 0, { message: 'Text must not be blank' });
 
-export const LocalAnalyzeRequestSchema = z
+const LocalDeterministicAnalyzeRequestSchema = z
   .object({
     schemaVersion: z.literal('1.0'),
     resumeText: localApiTextSchema,
@@ -23,7 +28,65 @@ export const LocalAnalyzeRequestSchema = z
   })
   .strict();
 
-export const LocalAnalyzeResponseSchema = AnalysisEnvelopeSchema;
+const LocalAIAnalyzeRequestSchema = z
+  .object({
+    schemaVersion: z.literal('1.0'),
+    resumeText: localApiTextSchema,
+    jobText: localApiTextSchema,
+    mode: z.literal('ai-enhanced'),
+    confirmProviderTransmission: z.literal(true),
+  })
+  .strict();
+
+export const LocalAnalyzeRequestSchema = z.union([
+  LocalDeterministicAnalyzeRequestSchema,
+  LocalAIAnalyzeRequestSchema,
+]);
+
+export const LocalAnalyzeResponseSchema = z.union([
+  AnalysisEnvelopeSchema,
+  EnhancedAnalysisEnvelopeSchema,
+]);
+
+export const LocalAnalyzeProgressStageSchema = z.enum([
+  'parsing-resume',
+  'parsing-job',
+  'baseline-analysis',
+  'provider-requirements',
+  'provider-evidence',
+  'provider-suggestions',
+  'complete',
+]);
+
+export const LocalAnalyzeProgressEventSchema = z
+  .object({
+    kind: z.literal('progress'),
+    stage: LocalAnalyzeProgressStageSchema,
+    completed: z.number().int().min(0),
+    total: z.number().int().min(1),
+    message: z.string().min(1).max(255),
+  })
+  .strict();
+
+export const LocalAnalyzeResultEventSchema = z
+  .object({
+    kind: z.literal('result'),
+    response: LocalAnalyzeResponseSchema,
+  })
+  .strict();
+
+export const LocalAnalyzeErrorEventSchema = z
+  .object({
+    kind: z.literal('error'),
+    error: z.string().min(1).max(255),
+  })
+  .strict();
+
+export const LocalAnalyzeStreamEventSchema = z.union([
+  LocalAnalyzeProgressEventSchema,
+  LocalAnalyzeResultEventSchema,
+  LocalAnalyzeErrorEventSchema,
+]);
 
 export const LocalResumeUploadMetadataSchema = z
   .object({
@@ -117,9 +180,18 @@ const LocalSettingsBaseSchema = z
     redactClearance: z.boolean().optional(),
     redactionTerms: z.array(z.string().trim().min(1).max(255)).max(50).optional(),
     defaultExportFormat: z.enum(['json', 'markdown']).nullable().optional(),
-    maxTotalTokens: z.number().int().min(1).max(10_000_000).nullable().optional(),
-    maxCostUsd: z.number().finite().min(0).max(10_000).nullable().optional(),
-    providerTimeoutMs: z.number().int().min(1_000).max(3_600_000).nullable().optional(),
+    maxTotalTokens: z.number().int().min(1).max(1_000_000).nullable().optional(),
+    maxCostUsd: z.number().finite().min(0).max(1_000).nullable().optional(),
+    inputMicroUsdPerMillionTokens: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
+    outputMicroUsdPerMillionTokens: z
+      .number()
+      .int()
+      .min(0)
+      .max(1_000_000_000)
+      .nullable()
+      .optional(),
+    providerTimeoutMs: z.number().int().min(1_000).max(300_000).nullable().optional(),
+    structuredOutputMode: z.enum(['json-schema', 'json-object']).nullable().optional(),
   })
   .strict();
 
@@ -145,6 +217,20 @@ export const LocalSettingsSchema = LocalSettingsBaseSchema.superRefine((settings
       path: ['baseUrl'],
     });
   }
+  if (
+    settings.maxCostUsd !== undefined &&
+    settings.maxCostUsd !== null &&
+    (settings.inputMicroUsdPerMillionTokens === undefined ||
+      settings.inputMicroUsdPerMillionTokens === null ||
+      settings.outputMicroUsdPerMillionTokens === undefined ||
+      settings.outputMicroUsdPerMillionTokens === null)
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'A maximum cost requires input and output token rates',
+      path: ['maxCostUsd'],
+    });
+  }
 });
 
 export const LocalSettingsResponseSchema = z
@@ -155,8 +241,68 @@ export const LocalSettingsResponseSchema = z
   })
   .strict();
 
+export const LocalProviderCredentialProviderSchema = z.enum(['openai', 'openai-compatible']);
+
+export const LocalProviderCredentialStatusSchema = z
+  .object({
+    provider: LocalProviderCredentialProviderSchema,
+    configured: z.boolean(),
+    source: z.enum(['key-store', 'environment', 'none']),
+  })
+  .strict();
+
+export const LocalProviderCredentialStatusResponseSchema = z
+  .object({
+    schemaVersion: z.literal('1.0'),
+    credentials: z.array(LocalProviderCredentialStatusSchema).length(2),
+  })
+  .strict();
+
+export const LocalProviderCredentialSaveRequestSchema = z
+  .object({
+    provider: LocalProviderCredentialProviderSchema,
+    apiKey: z
+      .string()
+      .min(1)
+      .max(4096)
+      .refine((value) => value.trim().length > 0, { message: 'API key must not be blank' }),
+  })
+  .strict();
+
+export const LocalProviderCredentialDeleteResponseSchema = z
+  .object({ removed: z.boolean() })
+  .strict();
+
+export const LocalProviderModelsQuerySchema = z
+  .object({
+    provider: ProviderIdSchema,
+    destination: ProviderDestinationSchema.nullable().optional(),
+    baseUrl: z.string().trim().min(1).max(2048).nullable().optional(),
+    model: z.string().trim().min(1).max(255).nullable().optional(),
+  })
+  .strict();
+
+export const LocalProviderModelSchema = z
+  .object({
+    id: z.string().trim().min(1).max(255),
+    structuredOutputSupported: z.boolean().nullable().optional(),
+  })
+  .strict();
+
+export const LocalProviderModelsResponseSchema = z
+  .object({
+    schemaVersion: z.literal('1.0'),
+    models: z.array(LocalProviderModelSchema).max(1_000),
+  })
+  .strict();
+
 export type LocalAnalyzeRequest = z.infer<typeof LocalAnalyzeRequestSchema>;
 export type LocalAnalyzeResponse = z.infer<typeof LocalAnalyzeResponseSchema>;
+export type LocalAnalyzeProgressEvent = z.infer<typeof LocalAnalyzeProgressEventSchema>;
+export type LocalAnalyzeResultEvent = z.infer<typeof LocalAnalyzeResultEventSchema>;
+export type LocalAnalyzeErrorEvent = z.infer<typeof LocalAnalyzeErrorEventSchema>;
+export type LocalAnalyzeStreamEvent = z.infer<typeof LocalAnalyzeStreamEventSchema>;
+export type LocalAnalyzeProgressStage = z.infer<typeof LocalAnalyzeProgressStageSchema>;
 export type LocalResumeUploadMetadata = z.infer<typeof LocalResumeUploadMetadataSchema>;
 export type LocalResumeParseResponse = z.infer<typeof LocalResumeParseResponseSchema>;
 export type LocalResumeParseError = z.infer<typeof LocalResumeParseErrorSchema>;
@@ -168,3 +314,17 @@ export type LocalHistoryQuery = z.infer<typeof LocalHistoryQuerySchema>;
 export type LocalSettingsPatch = z.infer<typeof LocalSettingsPatchSchema>;
 export type LocalSettings = z.infer<typeof LocalSettingsSchema>;
 export type LocalSettingsResponse = z.infer<typeof LocalSettingsResponseSchema>;
+export type LocalProviderCredentialProvider = z.infer<typeof LocalProviderCredentialProviderSchema>;
+export type LocalProviderCredentialStatus = z.infer<typeof LocalProviderCredentialStatusSchema>;
+export type LocalProviderCredentialStatusResponse = z.infer<
+  typeof LocalProviderCredentialStatusResponseSchema
+>;
+export type LocalProviderCredentialSaveRequest = z.infer<
+  typeof LocalProviderCredentialSaveRequestSchema
+>;
+export type LocalProviderCredentialDeleteResponse = z.infer<
+  typeof LocalProviderCredentialDeleteResponseSchema
+>;
+export type LocalProviderModelsQuery = z.infer<typeof LocalProviderModelsQuerySchema>;
+export type LocalProviderModel = z.infer<typeof LocalProviderModelSchema>;
+export type LocalProviderModelsResponse = z.infer<typeof LocalProviderModelsResponseSchema>;

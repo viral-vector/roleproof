@@ -454,6 +454,15 @@ describe('OpenAI adapter', () => {
       { apiKey: 'test-key' },
       fetchMock,
     ).healthCheck();
+    const listed = await new OpenAIProvider(
+      openAIConfig,
+      { apiKey: 'test-key' },
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ data: [{ id: 'z-model' }, { id: 'a-model' }] })),
+        ),
+    ).listModels();
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.openai.com/v1/models',
       expect.objectContaining({ method: 'GET', redirect: 'error' }),
@@ -466,6 +475,7 @@ describe('OpenAI adapter', () => {
     });
     expect(health.metadata.manifest.dataCategories).toEqual([]);
     expect(health.metadata.requestId).toBeNull();
+    expect(listed.output.models.map((model) => model.id)).toEqual(['a-model', 'z-model']);
   });
 });
 
@@ -497,10 +507,117 @@ describe('OpenAI-compatible adapter', () => {
         'response_format.type',
         mode === 'json-schema' ? 'json_schema' : 'json_object',
       );
+      expect(body).toHaveProperty('temperature', 0);
+      expect(JSON.stringify(body)).toContain(
+        'Each requirement object must have exactly these keys',
+      );
+      expect(JSON.stringify(body)).toContain('Return an instance matching this output contract');
+      expect(JSON.stringify(body)).toContain('requirements');
+      expect(JSON.stringify(body)).toContain('explanation');
       if (mode === 'json-schema')
         expect(body).toHaveProperty('response_format.json_schema.strict', true);
+      if (mode === 'json-schema')
+        expect(body).toHaveProperty(
+          'response_format.json_schema.schema.properties.requirements.items.properties.requirementId.enum',
+          ['r1'],
+        );
+      if (mode === 'json-schema')
+        expect(body).toHaveProperty(
+          'response_format.json_schema.schema.properties.requirements.items.properties.classification.enum',
+          [
+            'direct',
+            'strongly-related',
+            'partially-related',
+            'unsupported',
+            'unknown',
+            'requires-user-confirmation',
+          ],
+        );
     },
   );
+
+  it('uses short provider aliases and restores validated internal ids', async () => {
+    const aliasedOutput = {
+      requirements: [
+        {
+          ...outputs.requirements.requirements[0],
+          requirementId: 'r1',
+          evidenceIds: ['e1'],
+        },
+      ],
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(compatibleResponse(aliasedOutput));
+    const provider = new OpenAICompatibleProvider(compatibleConfig, null, fetchMock);
+    const call = context(
+      compatibleConfig,
+      'http://localhost:11434/v1/chat/completions',
+      requirementInput,
+      [],
+    );
+
+    const result = await provider.analyzeRequirements(call);
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]?.body as string) as Record<string, unknown>;
+
+    expect(result.output).toEqual(outputs.requirements);
+    expect(body).toHaveProperty(
+      'response_format.json_schema.schema.properties.requirements.items.properties.requirementId.enum',
+      ['r1'],
+    );
+    expect(body.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content: expect.stringContaining('"requirementId":"r1"') }),
+      ]),
+    );
+    expect(JSON.stringify(body.messages)).not.toContain('"requirementId":"req-1"');
+  });
+
+  it('keeps deterministic requirement classifications when compatible output tries to upgrade them', async () => {
+    const input: RequirementAnalysisInput = {
+      ...requirementInput,
+      requirements: [
+        {
+          ...requirementInput.requirements[0]!,
+          baselineClassification: 'unknown',
+          evidenceIds: [],
+        },
+      ],
+    };
+    const provider = new OpenAICompatibleProvider(
+      compatibleConfig,
+      null,
+      vi.fn<typeof fetch>().mockResolvedValue(
+        compatibleResponse({
+          requirements: [
+            {
+              requirementId: 'r1',
+              baselineClassification: 'unknown',
+              classification: 'direct',
+              evidenceIds: [],
+              explanation: 'Fictional interpretation.',
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await provider.analyzeRequirements(
+      context(
+        compatibleConfig,
+        'http://localhost:11434/v1/chat/completions',
+        input,
+        [],
+      ),
+    );
+
+    expect(result.output.requirements[0]).toMatchObject({
+      requirementId: 'req-1',
+      baselineClassification: 'unknown',
+      classification: 'unknown',
+      evidenceIds: [],
+    });
+  });
 
   it('supports all operation outputs and applies strict local validation including unknown fields', async () => {
     const fetchMock = vi
@@ -523,6 +640,30 @@ describe('OpenAI-compatible adapter', () => {
     await expect(
       provider.analyzeRequirements(context(compatibleConfig, endpoint, requirementInput, [])),
     ).rejects.toMatchObject({ code: 'invalid-output' });
+  });
+
+  it('accepts compatible responses with extra transport fields and omitted usage', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      compatibleResponse(outputs.requirements, {
+        model: 'phi4-mini:latest',
+        created: 1,
+        done: true,
+        usage: undefined,
+      }),
+    );
+    const provider = new OpenAICompatibleProvider(compatibleConfig, null, fetchMock);
+
+    const result = await provider.analyzeRequirements(
+      context(compatibleConfig, 'http://localhost:11434/v1/chat/completions', requirementInput, []),
+    );
+
+    expect(result.output).toEqual(outputs.requirements);
+    expect(result.metadata.usage).toEqual({
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      costMicroUsd: null,
+    });
   });
 
   it.each([
@@ -652,6 +793,25 @@ describe('OpenAI-compatible adapter', () => {
       structuredOutputSupported: true,
     });
     expect(capable.metadata.requestId).toBe('compatible-health-1');
+    const listed = await new OpenAICompatibleProvider(
+      compatibleConfig,
+      null,
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: [
+              { id: 'z-model' },
+              { id: 'a-model', capabilities: { structured_outputs: true } },
+            ],
+          }),
+        ),
+      ),
+    ).listModels();
+    expect(listed.output.models).toEqual([
+      { id: 'a-model', structuredOutputSupported: true },
+      { id: 'z-model', structuredOutputSupported: null },
+    ]);
+    expect(listed.metadata.manifest.dataCategories).toEqual([]);
 
     const unavailable = await new OpenAICompatibleProvider(
       compatibleConfig,

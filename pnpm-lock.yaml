@@ -84,6 +84,9 @@ importers:
       '@roleproof/parsers':
         specifier: workspace:*
         version: link:../../packages/parsers
+      '@roleproof/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
       '@roleproof/reporters':
         specifier: workspace:*
         version: link:../../packages/reporters

@@ -30,10 +30,10 @@ strict command envelope rather than adding fields to the Analysis envelope:
 
 Command envelope names are `init`, `profile.create`, `profile.show`, `profile.evidence.add`,
 `profile.evidence.edit`, `profile.evidence.remove`, `report.show`, `history`, `search`,
-`data.purge`, `providers.list`, and `providers.test`. Their `data` values contain the corresponding
-profile, document, career-evidence,
-analysis-history, search-result, or purge-result schemas. This is additive and does not change
-machine-readable output from `analyze --format json`.
+`data.purge`, `providers.list`, `providers.models`, and `providers.test`. Their `data` values
+contain the corresponding profile, document, career-evidence, analysis-history, search-result,
+provider, or purge-result schemas. This is additive and does not change machine-readable output from
+`analyze --format json`.
 
 Successful provider enhancement uses a new major envelope so strict `1.0` consumers never mistake
 an enhanced payload for the deterministic contract:
@@ -56,7 +56,8 @@ interpretations, evidence mappings, confirmation-gated additions, suggestions, a
 provider execution metadata. Provider fallback emits the deterministic `1.0` envelope and exits
 with code `4`. Enhanced `report.show` command output similarly uses command-envelope version `2.0`.
 
-The Phase 4 local API reuses these contracts. `POST /api/analyze` accepts a strict request envelope:
+The Phase 4 local API reuses these contracts. `POST /api/analyze` accepts a strict deterministic
+request envelope by default:
 
 ```json
 {
@@ -67,8 +68,23 @@ The Phase 4 local API reuses these contracts. `POST /api/analyze` accepts a stri
 }
 ```
 
-The response is the canonical deterministic analysis envelope version `1.0`; it does not include
-provider settings or `aiEnhancement`.
+For browser AI mode, the same route accepts an explicit enhanced request only when provider
+transmission is confirmed:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "mode": "ai-enhanced",
+  "confirmProviderTransmission": true,
+  "resumeText": "Fictional resume text",
+  "jobText": "Fictional job text"
+}
+```
+
+Deterministic responses use the canonical analysis envelope version `1.0`. Successful AI-enhanced
+responses use the enhanced envelope version `2.0` with `aiEnhancement`. If provider enhancement is
+unavailable or invalid, the route returns the unchanged deterministic `1.0` envelope and records the
+provider failure when storage is enabled. Responses never include stored provider settings.
 
 When the server has storage, analyzed inputs and results are persisted and exposed through history
 routes. `GET /api/history` returns a `LocalHistoryListResponseSchema` envelope:
@@ -114,7 +130,10 @@ content-free `{ "error" }` body.
     "defaultExportFormat": "markdown",
     "maxTotalTokens": 8192,
     "maxCostUsd": 0.1,
-    "providerTimeoutMs": 30000
+    "inputMicroUsdPerMillionTokens": 100000,
+    "outputMicroUsdPerMillionTokens": 200000,
+    "providerTimeoutMs": 30000,
+    "structuredOutputMode": "json-schema"
   },
   "databasePath": "local"
 }
@@ -123,8 +142,41 @@ content-free `{ "error" }` body.
 All settings fields are optional in requests; `PUT` accepts any subset and persists a merged
 result. An explicit `null` clears a stored value (the Settings screen uses `null` for "None"). The
 merged settings must still be complete: a configured provider requires a model, and an
-`openai-compatible` provider requires a base URL. Invalid merged settings answer `400`, and
+`openai-compatible` provider requires a base URL. A maximum cost requires both input and output
+token rates because RoleProof does not assume model pricing. Token, cost, and timeout values are
+bounded by the canonical provider configuration limits. Invalid merged settings answer `400`, and
 settings and history routes answer `503` when the server has no storage.
+
+Provider credentials use separate local-only routes. `GET /api/provider-credentials` returns status
+only:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "credentials": [
+    { "provider": "openai", "configured": true, "source": "key-store" },
+    { "provider": "openai-compatible", "configured": false, "source": "none" }
+  ]
+}
+```
+
+`PUT /api/provider-credentials` accepts `{ "provider", "apiKey" }` and stores the key in Windows
+Credential Manager in the current local build. `DELETE /api/provider-credentials/:provider` removes
+a stored key. Responses and logs never echo the key. Environment variables may satisfy credential
+status with source `environment`, but they are not persisted.
+
+`GET /api/provider-models` accepts query parameters `provider`, optional `destination`, optional
+`baseUrl`, and optional current `model`. It calls the provider `/models` endpoint only and returns:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "models": [{ "id": "phi4-mini:latest", "structuredOutputSupported": null }]
+}
+```
+
+The route is used by the Settings model dropdown and does not accept or transmit résumé or job
+content.
 
 `POST /api/resume/parse` accepts one multipart field named `resume`. Upload metadata is validated by
 `LocalResumeUploadMetadataSchema`: the safe base filename must end in `.txt`, `.pdf`, or `.docx`;

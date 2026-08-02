@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import type { LocalAnalyzeResponse } from '@roleproof/shared';
 
-import { analyzeLocal, parseResumeFile } from '../../api/client.js';
+import { analyzeLocalStream, parseResumeFile } from '../../api/client.js';
 import AnalysisResults from '../../components/AnalysisResults.vue';
 import PrimaryButton from '../../components/PrimaryButton.vue';
 import TextareaField from '../../components/TextareaField.vue';
@@ -13,8 +13,30 @@ const resumeFileInput = ref<HTMLInputElement | null>(null);
 const jobText = ref('');
 const error = ref('');
 const parseWarnings = ref<string[]>([]);
-const analysis = ref<LocalAnalyzeResponse['analysis'] | null>(null);
+const analysisEnvelope = ref<LocalAnalyzeResponse | null>(null);
+const analysisMode = ref<'deterministic' | 'ai-enhanced'>('deterministic');
+const confirmProviderTransmission = ref(false);
 const running = ref(false);
+const progressStage = ref('');
+const progressCompleted = ref(0);
+const progressTotal = ref(1);
+const progressMessage = ref('');
+
+const progressPercent = computed(() =>
+  Math.round((progressCompleted.value / progressTotal.value) * 100),
+);
+
+function updateProgress(event: {
+  stage: string;
+  completed: number;
+  total: number;
+  message: string;
+}) {
+  progressStage.value = event.stage;
+  progressCompleted.value = event.completed;
+  progressTotal.value = event.total;
+  progressMessage.value = event.message;
+}
 
 function selectResumeFile(event: Event) {
   const input = event.currentTarget as HTMLInputElement;
@@ -32,7 +54,11 @@ async function runAnalysis() {
   running.value = true;
   error.value = '';
   parseWarnings.value = [];
-  analysis.value = null;
+  analysisEnvelope.value = null;
+  progressStage.value = '';
+  progressCompleted.value = 0;
+  progressTotal.value = 1;
+  progressMessage.value = 'Preparing analysis.';
 
   try {
     let selectedResumeText = resumeText.value;
@@ -41,11 +67,16 @@ async function runAnalysis() {
       selectedResumeText = parsedResume.text;
       parseWarnings.value = parsedResume.warnings.map((warning) => warning.message);
     }
-    const envelope = await analyzeLocal({
-      resumeText: selectedResumeText,
-      jobText: jobText.value,
-    });
-    analysis.value = envelope.analysis;
+    const envelope = await analyzeLocalStream(
+      {
+        resumeText: selectedResumeText,
+        jobText: jobText.value,
+        mode: analysisMode.value,
+        confirmProviderTransmission: confirmProviderTransmission.value,
+      },
+      { onEvent: (event) => event.kind === 'progress' && updateProgress(event) },
+    );
+    analysisEnvelope.value = envelope;
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Analysis failed.';
   } finally {
@@ -113,14 +144,70 @@ async function runAnalysis() {
           />
         </div>
 
+        <section class="analysis-mode-panel" aria-labelledby="analysis-mode-title">
+          <div>
+            <p class="panel-kicker">Analysis mode</p>
+            <h3 id="analysis-mode-title">Choose evidence processing</h3>
+            <p>
+              Deterministic analysis stays local. AI-enhanced analysis uses your saved provider
+              settings and may send redacted analysis inputs only after confirmation.
+            </p>
+          </div>
+          <div class="mode-options" role="radiogroup" aria-labelledby="analysis-mode-title">
+            <label>
+              <input
+                v-model="analysisMode"
+                type="radio"
+                name="analysis-mode"
+                value="deterministic"
+                :disabled="running"
+              />
+              <span>Deterministic baseline</span>
+            </label>
+            <label>
+              <input
+                v-model="analysisMode"
+                type="radio"
+                name="analysis-mode"
+                value="ai-enhanced"
+                :disabled="running"
+              />
+              <span>AI-enhanced analysis</span>
+            </label>
+          </div>
+          <label v-if="analysisMode === 'ai-enhanced'" class="confirmation-check">
+            <input v-model="confirmProviderTransmission" type="checkbox" :disabled="running" />
+            <span>
+              I confirm RoleProof may send redacted analysis inputs to the configured provider.
+            </span>
+          </label>
+        </section>
+
         <footer class="form-footer">
-          <p class="local-assurance">
-            <span aria-hidden="true">&bull;</span>
-            Private by default. No cloud connection is used.
-          </p>
-          <PrimaryButton :disabled="running">
-            {{ running ? 'Analyzing evidence...' : 'Analyze role fit' }}
-          </PrimaryButton>
+          <div class="form-actions">
+            <p class="local-assurance">
+              <span aria-hidden="true">&bull;</span>
+              Private by default. Provider use requires explicit confirmation.
+            </p>
+            <PrimaryButton :disabled="running">
+              {{ running ? 'Analyzing evidence...' : 'Analyze role fit' }}
+            </PrimaryButton>
+          </div>
+          <section
+            v-if="running || progressMessage"
+            class="analysis-progress"
+            aria-live="polite"
+            aria-labelledby="analysis-progress-title"
+          >
+            <div class="progress-labels">
+              <span id="analysis-progress-title">Analysis progress</span>
+              <span>{{ progressPercent }}%</span>
+            </div>
+            <progress :value="progressCompleted" :max="progressTotal">
+              {{ progressPercent }}%
+            </progress>
+            <p>{{ progressMessage }}</p>
+          </section>
         </footer>
       </form>
     </section>
@@ -134,6 +221,14 @@ async function runAnalysis() {
       </ul>
     </section>
 
-    <AnalysisResults v-if="analysis" :analysis="analysis" />
+    <p
+      v-if="analysisMode === 'ai-enhanced' && analysisEnvelope?.schemaVersion === '1.0'"
+      class="parse-warnings"
+      role="status"
+    >
+      AI enhancement was unavailable, so RoleProof returned the deterministic fallback.
+    </p>
+
+    <AnalysisResults v-if="analysisEnvelope" :response="analysisEnvelope" />
   </main>
 </template>

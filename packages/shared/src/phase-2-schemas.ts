@@ -234,6 +234,23 @@ export const CommandEnvelopeSchema = z.union([
   ),
   envelope('providers.test', z.object({ health: ProviderHealthSchema }).strict()),
   envelope(
+    'providers.models',
+    z
+      .object({
+        models: z
+          .array(
+            z
+              .object({
+                id: z.string().trim().min(1).max(255),
+                structuredOutputSupported: z.boolean().nullable().optional(),
+              })
+              .strict(),
+          )
+          .max(MAX_PROVIDER_INPUT_ITEMS),
+      })
+      .strict(),
+  ),
+  envelope(
     'data.purge',
     z
       .object({ databaseRemoved: z.boolean(), walRemoved: z.boolean(), shmRemoved: z.boolean() })

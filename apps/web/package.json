@@ -34,6 +34,7 @@
     "@fastify/multipart": "10.1.0",
     "@roleproof/core": "workspace:*",
     "@roleproof/parsers": "workspace:*",
+    "@roleproof/providers": "workspace:*",
     "@roleproof/reporters": "workspace:*",
     "@roleproof/shared": "workspace:*",
     "@roleproof/storage": "workspace:*",

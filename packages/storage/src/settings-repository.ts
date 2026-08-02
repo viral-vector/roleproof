@@ -53,7 +53,15 @@ function toSettings(row: SettingsTable | undefined): LocalSettings {
   }
   if (row.max_total_tokens !== null) settings.maxTotalTokens = row.max_total_tokens;
   if (row.max_cost_usd !== null) settings.maxCostUsd = row.max_cost_usd;
+  if (row.input_micro_usd_per_million_tokens !== null) {
+    settings.inputMicroUsdPerMillionTokens = row.input_micro_usd_per_million_tokens;
+  }
+  if (row.output_micro_usd_per_million_tokens !== null) {
+    settings.outputMicroUsdPerMillionTokens = row.output_micro_usd_per_million_tokens;
+  }
   if (row.provider_timeout_ms !== null) settings.providerTimeoutMs = row.provider_timeout_ms;
+  if (row.structured_output_mode !== null)
+    settings.structuredOutputMode = row.structured_output_mode;
   return LocalSettingsSchema.parse(settings);
 }
 
@@ -71,7 +79,10 @@ function settingsRow(settings: LocalSettings, now: string): Partial<SettingsTabl
       settings.redactionTerms === undefined ? null : JSON.stringify(settings.redactionTerms),
     max_total_tokens: settings.maxTotalTokens ?? null,
     max_cost_usd: settings.maxCostUsd ?? null,
+    input_micro_usd_per_million_tokens: settings.inputMicroUsdPerMillionTokens ?? null,
+    output_micro_usd_per_million_tokens: settings.outputMicroUsdPerMillionTokens ?? null,
     provider_timeout_ms: settings.providerTimeoutMs ?? null,
+    structured_output_mode: settings.structuredOutputMode ?? null,
     updated_at: now,
   };
 }

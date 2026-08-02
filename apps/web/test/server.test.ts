@@ -148,6 +148,35 @@ describe('local web server foundation', () => {
     }
   });
 
+  it('streams progress and a final analysis response for deterministic runs', async () => {
+    const app = createLocalWebApp();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze/stream',
+        payload: {
+          schemaVersion: '1.0',
+          mode: 'deterministic',
+          resumeText: ['Fictional Candidate', 'Experience: TypeScript'].join('\n'),
+          jobText: ['Fictional Backend Engineer', 'Required: TypeScript'].join('\n'),
+        },
+      });
+      const lines = response.body
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as { kind: string });
+
+      expect(response.statusCode).toBe(200);
+      expect(lines[0]?.kind).toBe('progress');
+      expect(lines.at(-1)?.kind).toBe('result');
+      const result = lines.at(-1) as { kind: 'result'; response: unknown };
+      expect(LocalAnalyzeResponseSchema.parse(result.response).schemaVersion).toBe('1.0');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('rejects malformed local analyze requests without running analysis', async () => {
     const app = createLocalWebApp();
 

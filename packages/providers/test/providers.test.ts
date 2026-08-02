@@ -197,6 +197,9 @@ class MockProvider implements AIProvider {
       }),
     ),
   );
+  listModels = vi.fn((): Promise<ProviderResult<{ models: readonly [] }>> =>
+    Promise.resolve(result('health-check', { models: [] })),
+  );
 }
 
 const baseline: AnalysisResult = {

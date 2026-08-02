@@ -2,12 +2,20 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import {
   LocalAnalyzeRequestSchema,
+  LocalAnalyzeProgressEventSchema,
+  LocalAnalyzeResultEventSchema,
+  LocalAnalyzeErrorEventSchema,
   LocalAnalyzeResponseSchema,
   LocalHistoryListResponseSchema,
   LocalHistoryQuerySchema,
   LocalResumeParseErrorSchema,
   LocalResumeParseResponseSchema,
   LocalResumeUploadMetadataSchema,
+  LocalProviderCredentialDeleteResponseSchema,
+  LocalProviderModelsQuerySchema,
+  LocalProviderModelsResponseSchema,
+  LocalProviderCredentialSaveRequestSchema,
+  LocalProviderCredentialStatusResponseSchema,
   LocalSettingsPatchSchema,
   LocalSettingsResponseSchema,
   LocalSettingsSchema,
@@ -15,6 +23,9 @@ import {
   type LocalAnalyzeResponse,
   type LocalHistoryListResponse,
   type LocalResumeParseError,
+  type LocalProviderCredentialDeleteResponse,
+  type LocalProviderCredentialSaveRequest,
+  type LocalProviderCredentialStatusResponse,
   type LocalSettings,
   type LocalSettingsPatch,
   type LocalSettingsResponse,
@@ -36,6 +47,71 @@ describe('Phase 4 local API schemas', () => {
       false,
     );
     expect(LocalAnalyzeRequestSchema.safeParse({ ...request, resumeText: '   ' }).success).toBe(
+      false,
+    );
+  });
+
+  it('validates streaming analyze events for progress, result, and error states', () => {
+    expect(
+      LocalAnalyzeProgressEventSchema.parse({
+        kind: 'progress',
+        stage: 'baseline-analysis',
+        completed: 2,
+        total: 4,
+        message: 'Baseline analysis complete.',
+      }),
+    ).toMatchObject({ kind: 'progress', stage: 'baseline-analysis' });
+    expect(
+      LocalAnalyzeResultEventSchema.parse({
+        kind: 'result',
+        response: {
+          schemaVersion: '1.0',
+          analysis: {
+            schemaVersion: '1.0',
+            id: 'analysis-local-api',
+            overallScore: 0,
+            recommendation: 'manual-review',
+            confidence: 0,
+            hardBlockers: [],
+            matchedRequirements: [],
+            missingRequirements: [],
+            unsupportedClaims: [],
+            suggestedEmphasis: [],
+            suggestedAdditions: [],
+            interviewTopics: [],
+            generatedAt: '2026-01-01T00:00:00.000Z',
+            metadata: { mode: 'deterministic', engineVersion: '0.3.0' },
+          },
+        },
+      }).kind,
+    ).toBe('result');
+    expect(
+      LocalAnalyzeErrorEventSchema.parse({ kind: 'error', error: 'Invalid analyze request.' }),
+    ).toEqual({ kind: 'error', error: 'Invalid analyze request.' });
+    expect(
+      LocalAnalyzeProgressEventSchema.safeParse({ kind: 'progress', stage: 'oops' }).success,
+    ).toBe(false);
+  });
+
+  it('validates AI-enhanced local analyze requests with explicit transmission confirmation', () => {
+    const request = {
+      schemaVersion: '1.0',
+      mode: 'ai-enhanced',
+      resumeText: 'Fictional resume with TypeScript.',
+      jobText: 'Fictional job requiring TypeScript.',
+      confirmProviderTransmission: true,
+    } as const;
+
+    expect(LocalAnalyzeRequestSchema.parse(request)).toEqual(request);
+    expect(
+      LocalAnalyzeRequestSchema.safeParse({ ...request, confirmProviderTransmission: false })
+        .success,
+    ).toBe(false);
+    expect(
+      LocalAnalyzeRequestSchema.safeParse({ ...request, confirmProviderTransmission: undefined })
+        .success,
+    ).toBe(false);
+    expect(LocalAnalyzeRequestSchema.safeParse({ ...request, mode: 'deterministic' }).success).toBe(
       false,
     );
   });
@@ -68,6 +144,73 @@ describe('Phase 4 local API schemas', () => {
     expect(
       LocalAnalyzeResponseSchema.safeParse({ ...response, aiEnhancement: { schemaVersion: '1.0' } })
         .success,
+    ).toBe(false);
+  });
+
+  it('accepts deterministic fallback and enhanced envelopes for local analyze responses', () => {
+    const analysis = {
+      schemaVersion: '1.0',
+      id: 'analysis-local-api',
+      overallScore: 0,
+      recommendation: 'manual-review',
+      confidence: 0,
+      hardBlockers: [],
+      matchedRequirements: [],
+      missingRequirements: [],
+      unsupportedClaims: [],
+      suggestedEmphasis: [],
+      suggestedAdditions: [],
+      interviewTopics: [],
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      metadata: { mode: 'deterministic', engineVersion: '0.3.0' },
+    } as const;
+    const execution = {
+      operation: 'analyze-requirements',
+      provider: 'openai',
+      model: 'fictional-model',
+      destination: 'hosted',
+      manifest: {
+        provider: 'openai',
+        model: 'fictional-model',
+        destination: 'hosted',
+        endpointOrigin: 'https://api.openai.com',
+        dataCategories: ['baseline-classification'],
+        redactionApplied: true,
+        redactionSummary: { categories: [], replacementCount: 0, inputChars: 1, outputChars: 1 },
+      },
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, costMicroUsd: 1 },
+      requestId: 'request-1',
+      errorCode: null,
+    } as const;
+    const enhanced = {
+      schemaVersion: '2.0',
+      analysis,
+      aiEnhancement: {
+        schemaVersion: '1.0',
+        baselineAnalysisId: analysis.id,
+        requirementAnalysis: { requirements: [] },
+        evidenceMapping: { mappings: [] },
+        applicationSuggestions: {
+          suggestedEmphasis: [],
+          suggestedAdditions: [],
+          interviewTopics: [],
+          coverLetterAngles: [],
+        },
+        providerExecutions: [
+          { ...execution, operation: 'analyze-requirements' },
+          { ...execution, operation: 'map-evidence' },
+          { ...execution, operation: 'suggest-application-changes' },
+        ],
+      },
+    } as const;
+
+    expect(LocalAnalyzeResponseSchema.parse({ schemaVersion: '1.0', analysis })).toEqual({
+      schemaVersion: '1.0',
+      analysis,
+    });
+    expect(LocalAnalyzeResponseSchema.parse(enhanced)).toEqual(enhanced);
+    expect(
+      LocalAnalyzeResponseSchema.safeParse({ ...enhanced, schemaVersion: '3.0' }).success,
     ).toBe(false);
   });
 
@@ -127,6 +270,46 @@ describe('Phase 4 local API schemas', () => {
       format: 'docx',
       warnings: [],
     });
+  });
+
+  it('validates provider credential status without exposing API keys', () => {
+    const status = {
+      schemaVersion: '1.0',
+      credentials: [
+        { provider: 'openai', configured: true, source: 'key-store' },
+        { provider: 'openai-compatible', configured: false, source: 'none' },
+      ],
+    } as const;
+
+    const parsed = LocalProviderCredentialStatusResponseSchema.parse(status);
+
+    expect(parsed).toEqual(status);
+    expectTypeOf(parsed).toEqualTypeOf<LocalProviderCredentialStatusResponse>();
+    expect(
+      LocalProviderCredentialStatusResponseSchema.safeParse({
+        ...status,
+        credentials: [{ ...status.credentials[0], apiKey: 'secret' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates provider credential save and delete responses', () => {
+    const saveRequest = {
+      provider: 'openai-compatible',
+      apiKey: 'fictional-secret',
+    } as const;
+    const deleted = { removed: true } as const;
+
+    const parsedSave = LocalProviderCredentialSaveRequestSchema.parse(saveRequest);
+    const parsedDelete = LocalProviderCredentialDeleteResponseSchema.parse(deleted);
+
+    expect(parsedSave).toEqual(saveRequest);
+    expectTypeOf(parsedSave).toEqualTypeOf<LocalProviderCredentialSaveRequest>();
+    expect(parsedDelete).toEqual(deleted);
+    expectTypeOf(parsedDelete).toEqualTypeOf<LocalProviderCredentialDeleteResponse>();
+    expect(
+      LocalProviderCredentialSaveRequestSchema.safeParse({ ...saveRequest, apiKey: '   ' }).success,
+    ).toBe(false);
   });
 
   it('validates content-free resume parse error bodies with an optional reason code', () => {
@@ -225,7 +408,10 @@ describe('Phase 4 local API schemas', () => {
       defaultExportFormat: 'json',
       maxTotalTokens: 4096,
       maxCostUsd: 0.5,
+      inputMicroUsdPerMillionTokens: 100_000,
+      outputMicroUsdPerMillionTokens: 200_000,
       providerTimeoutMs: 60_000,
+      structuredOutputMode: 'json-object',
     } as const;
 
     const parsed = LocalSettingsSchema.parse(settings);
@@ -252,10 +438,22 @@ describe('Phase 4 local API schemas', () => {
     expect(LocalSettingsSchema.safeParse({ maxTotalTokens: null }).success).toBe(true);
     expect(LocalSettingsSchema.safeParse({ maxCostUsd: null }).success).toBe(true);
     expect(LocalSettingsSchema.safeParse({ providerTimeoutMs: null }).success).toBe(true);
+    expect(LocalSettingsSchema.safeParse({ structuredOutputMode: null }).success).toBe(true);
     expect(LocalSettingsSchema.safeParse({ provider: 'unexpected-provider' }).success).toBe(false);
     expect(LocalSettingsSchema.safeParse({ maxTotalTokens: 0 }).success).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ maxTotalTokens: 1_000_001 }).success).toBe(false);
     expect(LocalSettingsSchema.safeParse({ maxCostUsd: Number.NaN }).success).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ maxCostUsd: 1_000.01 }).success).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ maxCostUsd: 0.5 }).success).toBe(false);
+    expect(
+      LocalSettingsSchema.safeParse({
+        maxCostUsd: 0.5,
+        inputMicroUsdPerMillionTokens: 100_000,
+      }).success,
+    ).toBe(false);
     expect(LocalSettingsSchema.safeParse({ providerTimeoutMs: 500 }).success).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ providerTimeoutMs: 300_001 }).success).toBe(false);
+    expect(LocalSettingsSchema.safeParse({ structuredOutputMode: 'xml' }).success).toBe(false);
     expect(LocalSettingsSchema.safeParse({ redactionTerms: ['   '] }).success).toBe(false);
     expect(
       LocalSettingsSchema.safeParse({
@@ -270,12 +468,16 @@ describe('Phase 4 local API schemas', () => {
       provider: 'openai-compatible',
       defaultExportFormat: null,
       maxTotalTokens: null,
+      maxCostUsd: null,
+      structuredOutputMode: null,
     });
 
     expect(patch).toEqual({
       provider: 'openai-compatible',
       defaultExportFormat: null,
       maxTotalTokens: null,
+      maxCostUsd: null,
+      structuredOutputMode: null,
     });
     expectTypeOf(patch).toEqualTypeOf<LocalSettingsPatch>();
     expect(LocalSettingsPatchSchema.safeParse({ provider: 'openai-compatible' }).success).toBe(
@@ -316,5 +518,24 @@ describe('Phase 4 local API schemas', () => {
     expect(
       LocalSettingsResponseSchema.safeParse({ schemaVersion: '1.0', settings: {} }).success,
     ).toBe(false);
+  });
+
+  it('validates local provider model list requests and responses without credentials', () => {
+    expect(
+      LocalProviderModelsQuerySchema.parse({
+        provider: 'openai-compatible',
+        destination: 'local',
+        baseUrl: 'http://localhost:11434/v1',
+      }),
+    ).toMatchObject({ provider: 'openai-compatible', destination: 'local' });
+    expect(
+      LocalProviderModelsResponseSchema.parse({
+        schemaVersion: '1.0',
+        models: [{ id: 'phi4-mini:latest', structuredOutputSupported: null }],
+      }).models[0]?.id,
+    ).toBe('phi4-mini:latest');
+    expect(() =>
+      LocalProviderModelsResponseSchema.parse({ schemaVersion: '1.0', models: [{ id: '' }] }),
+    ).toThrow();
   });
 });

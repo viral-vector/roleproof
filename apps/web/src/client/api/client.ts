@@ -1,18 +1,33 @@
 import {
   LocalAnalyzeRequestSchema,
   LocalAnalyzeResponseSchema,
+  LocalAnalyzeStreamEventSchema,
   LocalHistoryListResponseSchema,
+  LocalProviderCredentialDeleteResponseSchema,
+  LocalProviderCredentialProviderSchema,
+  LocalProviderCredentialSaveRequestSchema,
+  LocalProviderCredentialStatusResponseSchema,
+  LocalProviderModelsQuerySchema,
+  LocalProviderModelsResponseSchema,
   LocalResumeParseErrorSchema,
   LocalResumeParseResponseSchema,
   LocalResumeUploadMetadataSchema,
   LocalSettingsPatchSchema,
   LocalSettingsResponseSchema,
   type LocalHistoryListResponse,
+  type LocalProviderCredentialDeleteResponse,
+  type LocalProviderCredentialProvider,
+  type LocalProviderCredentialSaveRequest,
+  type LocalProviderCredentialStatusResponse,
+  type LocalProviderModelsQuery,
+  type LocalProviderModelsResponse,
   type LocalResumeParseErrorCode,
   type LocalSettingsPatch,
   type LocalSettingsResponse,
+  type LocalAnalyzeResponse,
+  type LocalAnalyzeStreamEvent,
+  type LocalResumeParseResponse,
 } from '@roleproof/shared';
-import type { LocalAnalyzeResponse, LocalResumeParseResponse } from '@roleproof/shared';
 
 export interface LocalHealth {
   schemaVersion: '1.0';
@@ -25,6 +40,12 @@ export interface LocalHealth {
 export interface AnalyzeLocalInput {
   resumeText: string;
   jobText: string;
+  mode?: 'deterministic' | 'ai-enhanced';
+  confirmProviderTransmission?: boolean;
+}
+
+export interface AnalyzeLocalStreamCallbacks {
+  onEvent?: (event: LocalAnalyzeStreamEvent) => void;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -60,11 +81,17 @@ export async function analyzeLocal(
   input: AnalyzeLocalInput,
   fetchImpl: typeof fetch = fetch,
 ): Promise<LocalAnalyzeResponse> {
+  if (input.mode === 'ai-enhanced' && input.confirmProviderTransmission !== true) {
+    throw new Error('AI-enhanced analysis requires provider transmission confirmation.');
+  }
   let request: ReturnType<typeof LocalAnalyzeRequestSchema.parse>;
   try {
     request = LocalAnalyzeRequestSchema.parse({
       schemaVersion: '1.0',
-      mode: 'deterministic',
+      mode: input.mode ?? 'deterministic',
+      ...(input.mode === 'ai-enhanced'
+        ? { confirmProviderTransmission: input.confirmProviderTransmission }
+        : {}),
       resumeText: input.resumeText,
       jobText: input.jobText,
     });
@@ -78,6 +105,62 @@ export async function analyzeLocal(
   });
   if (!response.ok) throw new Error('Analysis request failed. Check the supplied text.');
   return LocalAnalyzeResponseSchema.parse(await response.json());
+}
+
+async function readAnalyzeStream(
+  response: Response,
+  onEvent?: (event: LocalAnalyzeStreamEvent) => void,
+): Promise<LocalAnalyzeResponse> {
+  if (response.body === null) {
+    throw new Error('Analysis request failed. Check the supplied text.');
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: LocalAnalyzeResponse | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newlineIndex = buffer.indexOf('\n');
+    while (newlineIndex !== -1) {
+      const line = buffer.slice(0, newlineIndex).trim();
+      buffer = buffer.slice(newlineIndex + 1);
+      newlineIndex = buffer.indexOf('\n');
+      if (line.length === 0) continue;
+      const event = LocalAnalyzeStreamEventSchema.parse(JSON.parse(line));
+      onEvent?.(event);
+      if (event.kind === 'result') result = event.response;
+    }
+  }
+
+  if (result === null) {
+    throw new Error('Analysis request failed. Check the supplied text.');
+  }
+  return result;
+}
+
+export async function analyzeLocalStream(
+  input: AnalyzeLocalInput,
+  callbacks: AnalyzeLocalStreamCallbacks = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<LocalAnalyzeResponse> {
+  const response = await fetchImpl('/api/analyze/stream', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
+    body: JSON.stringify({
+      schemaVersion: '1.0',
+      mode: input.mode ?? 'deterministic',
+      ...(input.mode === 'ai-enhanced'
+        ? { confirmProviderTransmission: input.confirmProviderTransmission }
+        : {}),
+      resumeText: input.resumeText,
+      jobText: input.jobText,
+    }),
+  });
+  if (!response.ok) throw new Error('Analysis request failed. Check the supplied text.');
+  return readAnalyzeStream(response, callbacks.onEvent);
 }
 
 export async function listHistory(
@@ -174,6 +257,71 @@ export async function updateSettings(
     );
   }
   return LocalSettingsResponseSchema.parse(await response.json());
+}
+
+export async function getProviderCredentialStatus(
+  fetchImpl: typeof fetch = fetch,
+): Promise<LocalProviderCredentialStatusResponse> {
+  const response = await fetchImpl('/api/provider-credentials');
+  if (!response.ok) {
+    throw new Error('Provider credentials are unavailable. Check the local server and try again.');
+  }
+  return LocalProviderCredentialStatusResponseSchema.parse(await response.json());
+}
+
+export async function saveProviderCredential(
+  credential: LocalProviderCredentialSaveRequest,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LocalProviderCredentialStatusResponse> {
+  const parsed = LocalProviderCredentialSaveRequestSchema.safeParse(credential);
+  if (!parsed.success) {
+    throw new Error('Provider credential is invalid. Enter a non-empty API key.');
+  }
+  const response = await fetchImpl('/api/provider-credentials', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(parsed.data),
+  });
+  if (!response.ok) {
+    throw new Error(
+      'Provider credential could not be saved. Check the local server and try again.',
+    );
+  }
+  return LocalProviderCredentialStatusResponseSchema.parse(await response.json());
+}
+
+export async function deleteProviderCredential(
+  provider: LocalProviderCredentialProvider,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LocalProviderCredentialDeleteResponse> {
+  const parsed = LocalProviderCredentialProviderSchema.safeParse(provider);
+  if (!parsed.success) throw new Error('Provider credential is invalid.');
+  const response = await fetchImpl(`/api/provider-credentials/${encodeURIComponent(parsed.data)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(
+      'Provider credential could not be removed. Check the local server and try again.',
+    );
+  }
+  return LocalProviderCredentialDeleteResponseSchema.parse(await response.json());
+}
+
+export async function listProviderModels(
+  query: LocalProviderModelsQuery,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LocalProviderModelsResponse> {
+  const parsed = LocalProviderModelsQuerySchema.safeParse(query);
+  if (!parsed.success) throw new Error('Provider model request is invalid.');
+  const params = new URLSearchParams({ provider: parsed.data.provider });
+  if (parsed.data.destination != null) params.set('destination', parsed.data.destination);
+  if (parsed.data.baseUrl != null) params.set('baseUrl', parsed.data.baseUrl);
+  if (parsed.data.model != null) params.set('model', parsed.data.model);
+  const response = await fetchImpl(`/api/provider-models?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error('Provider models are unavailable. Check provider settings and try again.');
+  }
+  return LocalProviderModelsResponseSchema.parse(await response.json());
 }
 
 const GENERIC_RESUME_PARSE_ERROR =

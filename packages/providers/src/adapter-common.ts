@@ -30,6 +30,17 @@ export interface ProviderCredentials {
 
 const stringSchema = { type: 'string', minLength: 1 } as const;
 const stringArraySchema = { type: 'array', items: { type: 'string' }, maxItems: 100 } as const;
+const matchClassificationSchema = {
+  type: 'string',
+  enum: [
+    'direct',
+    'strongly-related',
+    'partially-related',
+    'unsupported',
+    'unknown',
+    'requires-user-confirmation',
+  ],
+} as const;
 const requirementResultSchema = {
   type: 'object',
   additionalProperties: false,
@@ -41,11 +52,11 @@ const requirementResultSchema = {
     'explanation',
   ],
   properties: {
-    requirementId: stringSchema,
-    baselineClassification: stringSchema,
-    classification: stringSchema,
+    requirementId: { ...stringSchema },
+    baselineClassification: { ...matchClassificationSchema },
+    classification: { ...matchClassificationSchema },
     evidenceIds: stringArraySchema,
-    explanation: stringSchema,
+    explanation: { ...stringSchema },
   },
 } as const;
 const suggestionSchema = {
@@ -53,10 +64,10 @@ const suggestionSchema = {
   additionalProperties: false,
   required: ['text', 'classification', 'evidenceIds', 'explanation'],
   properties: {
-    text: stringSchema,
-    classification: stringSchema,
+    text: { ...stringSchema },
+    classification: { ...matchClassificationSchema },
     evidenceIds: stringArraySchema,
-    explanation: stringSchema,
+    explanation: { ...stringSchema },
   },
 } as const;
 

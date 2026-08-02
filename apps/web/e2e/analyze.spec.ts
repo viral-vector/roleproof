@@ -39,6 +39,7 @@ test('runs a local deterministic analysis and downloads validated results', asyn
   await page.getByRole('button', { name: 'Analyze role fit' }).click();
 
   await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
+  await expect(page.getByText('Analysis progress')).toBeVisible();
   expect(resumeParseRequests).toBe(1);
   await expect(page.getByRole('heading', { name: 'Eligibility blockers' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Strong matches' })).toBeVisible();

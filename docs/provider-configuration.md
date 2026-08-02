@@ -3,9 +3,19 @@
 AI enhancement is optional. Omitting `--provider`, or passing `--no-ai`, runs only the deterministic
 engine. Environment variables provide credentials but never select or activate a provider.
 
+The local web Settings screen stores provider, model, destination, base URL, redaction choices,
+structured-output mode, token limits, timeout, and optional pricing rates in SQLite. API keys are
+stored through Windows Credential Manager from the Settings screen, not in SQLite. Environment
+variables remain supported as the distributed fallback and for non-Windows local runs until their OS
+key-store backends are added. The Analyze screen defaults to deterministic mode. Selecting
+AI-enhanced analysis requires checking the provider-transmission confirmation before any redacted
+analysis inputs are sent.
+
 ## OpenAI
 
-Set `OPENAI_API_KEY`, choose a model, and explicitly confirm hosted transmission:
+For local web use on Windows, enter the API key in Settings so RoleProof stores it in Windows
+Credential Manager. For CLI/distributed use, set `OPENAI_API_KEY`, choose a model, and explicitly
+confirm hosted transmission:
 
 ```powershell
 $env:OPENAI_API_KEY = "your-key"
@@ -28,6 +38,11 @@ Start Ollama's OpenAI-compatible endpoint, ensure the model is installed, and us
 destination. A local API key is not required:
 
 ```powershell
+pnpm exec roleproof providers models `
+  --provider openai-compatible `
+  --destination local `
+  --base-url http://127.0.0.1:11434/v1
+
 pnpm exec roleproof providers test `
   --provider openai-compatible `
   --model llama3.2 `
@@ -65,9 +80,13 @@ The `--model` value must match an ID returned by the endpoint's `/models` respon
 
 ## Hosted Or Custom Compatible Endpoints
 
-Set `ROLEPROOF_PROVIDER_API_KEY`, use an HTTPS base URL without embedded credentials, query, or
+For local web use on Windows, enter the compatible-provider API key in Settings. For CLI/distributed
+use, set `ROLEPROOF_PROVIDER_API_KEY`, use an HTTPS base URL without embedded credentials, query, or
 fragment, choose `hosted` or `custom`, and pass `--confirm-transmission`. RoleProof does not silently
 fall back to OpenAI or any other endpoint.
+
+The credential status API reports only whether a key is configured and whether it came from the OS
+credential manager or the environment. It never returns the API key value.
 
 ## Privacy And Limits
 
@@ -90,5 +109,6 @@ are not prepaid spending guarantees: the first completed request, or the request
 limit, may already have been billed. `--max-output-tokens` bounds requested output before transport.
 
 Provider failure returns the unchanged deterministic report with exit code `4`. No partial AI
-enhancement is published. Use `roleproof providers list` to inspect supported adapter types and
-`roleproof providers test` to perform a health check without sending career data.
+enhancement is published. Use `roleproof providers list` to inspect supported adapter types,
+`roleproof providers models` to list endpoint model IDs, and `roleproof providers test` to perform a
+health check. Model-list and health-check requests do not send résumé or job content.

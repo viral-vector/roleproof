@@ -8,7 +8,7 @@ import AnalysisResults from '../../components/AnalysisResults.vue';
 
 const route = useRoute();
 const router = useRouter();
-const analysis = ref<LocalAnalyzeResponse['analysis'] | null>(null);
+const response = ref<LocalAnalyzeResponse | null>(null);
 const error = ref('');
 const running = ref(false);
 const deleting = ref(false);
@@ -20,9 +20,9 @@ async function load() {
   error.value = '';
   try {
     const envelope = await getHistoryItem(id);
-    analysis.value = envelope.analysis;
+    response.value = envelope;
   } catch (cause) {
-    analysis.value = null;
+    response.value = null;
     error.value = cause instanceof Error ? cause.message : 'History is unavailable.';
   } finally {
     running.value = false;
@@ -52,7 +52,7 @@ onMounted(() => {
     <nav class="detail-nav" aria-label="History navigation">
       <RouterLink class="export-button" to="/history">&larr; Back to history</RouterLink>
       <button
-        v-if="analysis"
+        v-if="response"
         class="danger-button"
         type="button"
         :disabled="deleting"
@@ -62,7 +62,7 @@ onMounted(() => {
       </button>
     </nav>
 
-    <p v-if="analysis" class="fieldset-note">
+    <p v-if="response" class="fieldset-note">
       Deleting removes this report and any job description only it references. The stored résumé
       text remains available for future analyses.
     </p>
@@ -76,6 +76,6 @@ onMounted(() => {
 
     <p v-if="running" class="loading-note" role="status">Loading stored report...</p>
 
-    <AnalysisResults v-if="analysis" :analysis="analysis" />
+    <AnalysisResults v-if="response" :response="response" />
   </main>
 </template>

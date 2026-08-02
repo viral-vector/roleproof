@@ -153,7 +153,10 @@ export interface SettingsTable {
   redaction_terms_json: string | null;
   max_total_tokens: number | null;
   max_cost_usd: number | null;
+  input_micro_usd_per_million_tokens: number | null;
+  output_micro_usd_per_million_tokens: number | null;
   provider_timeout_ms: number | null;
+  structured_output_mode: 'json-schema' | 'json-object' | null;
   created_at: string;
   updated_at: string;
 }

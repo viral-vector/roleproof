@@ -11,7 +11,7 @@ import {
   type ProviderCliOptions,
 } from './provider-config.js';
 
-const HealthOptionsSchema = z
+const ProviderOptionsBaseSchema = z
   .object({
     provider: z.enum(['openai', 'openai-compatible']),
     model: z.string().min(1),
@@ -27,39 +27,57 @@ const HealthOptionsSchema = z
     outputCostPerMillionUsd: z.coerce.number().finite().nonnegative().optional(),
     format: z.enum(['text', 'json']),
   })
-  .strict()
-  .superRefine((options, context) => {
-    if (
-      options.provider === 'openai' &&
-      (options.baseUrl !== undefined ||
-        (options.destination !== undefined && options.destination !== 'hosted') ||
-        options.structuredOutputMode === 'json-object')
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'OpenAI uses its fixed hosted JSON-schema endpoint',
-      });
-    }
-    if (
-      options.provider === 'openai-compatible' &&
-      (options.baseUrl === undefined || options.destination === undefined)
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'OpenAI-compatible providers require --base-url and --destination',
-      });
-    }
-    if (
-      (options.inputCostPerMillionUsd === undefined) !==
-        (options.outputCostPerMillionUsd === undefined) ||
-      (options.maxCostUsd !== undefined && options.inputCostPerMillionUsd === undefined)
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Maximum cost requires both input and output rates',
-      });
-    }
-  });
+  .strict();
+
+function validateProviderOptions(
+  options: {
+    provider: 'openai' | 'openai-compatible';
+    baseUrl?: string | undefined;
+    destination?: string | undefined;
+    structuredOutputMode?: string | undefined;
+    inputCostPerMillionUsd?: number | undefined;
+    outputCostPerMillionUsd?: number | undefined;
+    maxCostUsd?: number | undefined;
+  },
+  context: z.RefinementCtx,
+): void {
+  if (
+    options.provider === 'openai' &&
+    (options.baseUrl !== undefined ||
+      (options.destination !== undefined && options.destination !== 'hosted') ||
+      options.structuredOutputMode === 'json-object')
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'OpenAI uses its fixed hosted JSON-schema endpoint',
+    });
+  }
+  if (
+    options.provider === 'openai-compatible' &&
+    (options.baseUrl === undefined || options.destination === undefined)
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'OpenAI-compatible providers require --base-url and --destination',
+    });
+  }
+  if (
+    (options.inputCostPerMillionUsd === undefined) !==
+      (options.outputCostPerMillionUsd === undefined) ||
+    (options.maxCostUsd !== undefined && options.inputCostPerMillionUsd === undefined)
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Maximum cost requires both input and output rates',
+    });
+  }
+}
+
+const HealthOptionsSchema = ProviderOptionsBaseSchema.superRefine(validateProviderOptions);
+
+const ModelsOptionsSchema = ProviderOptionsBaseSchema.extend({
+  model: z.string().min(1).optional(),
+}).superRefine(validateProviderOptions);
 
 function writeJson(command: string, data: unknown, output: CliOutput): void {
   const envelope = CommandEnvelopeSchema.parse({ schemaVersion: '1.0', command, data });
@@ -115,5 +133,35 @@ export function registerProviderCommands(
         );
       }
       state.exitCode = result.output.status === 'healthy' ? 0 : 4;
+    });
+
+  providers
+    .command('models')
+    .description('List provider models without career data')
+    .requiredOption('--provider <provider>', 'Provider: openai or openai-compatible')
+    .option('--model <model>', 'Optional current provider model')
+    .option('--base-url <url>', 'OpenAI-compatible API base URL')
+    .option('--destination <destination>', 'Destination: hosted, local, or custom')
+    .option('--structured-output-mode <mode>', 'Structured output: json-schema or json-object')
+    .option('--provider-timeout-ms <number>', 'Provider request timeout')
+    .option('--max-input-chars <number>', 'Maximum provider input characters')
+    .option('--max-output-tokens <number>', 'Maximum output tokens')
+    .option('--max-total-tokens <number>', 'Maximum aggregate tokens')
+    .option('--max-cost-usd <number>', 'Maximum cost in USD')
+    .option('--input-cost-per-million-usd <number>', 'Input rate per million tokens')
+    .option('--output-cost-per-million-usd <number>', 'Output rate per million tokens')
+    .option('--format <format>', 'Output format: text or json', 'text')
+    .action(async (rawOptions: unknown) => {
+      const parsed = ModelsOptionsSchema.safeParse(rawOptions);
+      if (!parsed.success)
+        throw new CliError(2, parsed.error.issues[0]?.message ?? 'Invalid provider options.');
+      const config = buildProviderConfig({
+        ...(parsed.data as ProviderCliOptions),
+        model: parsed.data.model ?? 'model-list-probe',
+      });
+      const result = await createConfiguredProvider(config).listModels();
+      if (parsed.data.format === 'json')
+        writeJson('providers.models', { models: result.output.models }, output);
+      else output.writeOut(`${result.output.models.map((model) => model.id).join('\n')}\n`);
     });
 }

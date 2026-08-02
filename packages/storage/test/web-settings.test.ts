@@ -19,6 +19,8 @@ import {
 import { initialMigration } from '../src/migrations/0001-initial.js';
 import { aiPersistenceMigration } from '../src/migrations/0002-ai-persistence.js';
 import { docxFormatMigration } from '../src/migrations/0003-docx-format.js';
+import { webSettingsMigration } from '../src/migrations/0004-web-settings.js';
+import { providerSettingsAlignmentMigration } from '../src/migrations/0005-provider-settings-alignment.js';
 
 const now = '2026-07-01T12:00:00.000Z';
 const directories: string[] = [];
@@ -28,6 +30,12 @@ const releasedMigrations = {
   '0001-initial': initialMigration,
   '0002-ai-persistence': aiPersistenceMigration,
   '0003-docx-format': docxFormatMigration,
+};
+
+const migrationsBeforeCostRateRepair = {
+  ...releasedMigrations,
+  '0004-web-settings': webSettingsMigration,
+  '0005-provider-settings-alignment': providerSettingsAlignmentMigration,
 };
 
 afterEach(async () => {
@@ -70,7 +78,10 @@ describe('web settings repository', () => {
       defaultExportFormat: 'markdown',
       maxTotalTokens: 4096,
       maxCostUsd: 0.5,
+      inputMicroUsdPerMillionTokens: 100_000,
+      outputMicroUsdPerMillionTokens: 200_000,
       providerTimeoutMs: 60_000,
+      structuredOutputMode: 'json-object',
     };
     const first = createRoleProofRepositories(database, () => new Date(now));
 
@@ -129,7 +140,10 @@ describe('web settings repository', () => {
       defaultExportFormat: 'markdown',
       maxTotalTokens: 4096,
       maxCostUsd: 0.5,
+      inputMicroUsdPerMillionTokens: 100_000,
+      outputMicroUsdPerMillionTokens: 200_000,
       providerTimeoutMs: 60_000,
+      structuredOutputMode: 'json-object',
     });
 
     const cleared = await settings.update({
@@ -139,7 +153,10 @@ describe('web settings repository', () => {
       defaultExportFormat: null,
       maxTotalTokens: null,
       maxCostUsd: null,
+      inputMicroUsdPerMillionTokens: null,
+      outputMicroUsdPerMillionTokens: null,
       providerTimeoutMs: null,
+      structuredOutputMode: null,
     });
 
     expect(cleared).toEqual({ destination: 'local' });
@@ -179,14 +196,36 @@ describe('0004 web settings migration', () => {
     const { settings } = createRoleProofRepositories(migrated, () => new Date(now));
     expect(await settings.get()).toEqual({});
 
-    await settings.update({ provider: 'openai', model: 'fictional-model', maxTotalTokens: 2048 });
-    const rows = await sql<{ provider: string | null; model: string | null }>`
-      select provider, model, max_total_tokens from settings where id = 1
+    await settings.update({
+      provider: 'openai',
+      model: 'fictional-model',
+      maxTotalTokens: 2048,
+      structuredOutputMode: 'json-schema',
+      inputMicroUsdPerMillionTokens: 100_000,
+      outputMicroUsdPerMillionTokens: 200_000,
+      maxCostUsd: 0.5,
+    });
+    const rows = await sql<{
+      provider: string | null;
+      model: string | null;
+      max_total_tokens: number | null;
+      structured_output_mode: string | null;
+      input_micro_usd_per_million_tokens: number | null;
+      output_micro_usd_per_million_tokens: number | null;
+      max_cost_usd: number | null;
+    }>`
+      select provider, model, max_total_tokens, structured_output_mode,
+        input_micro_usd_per_million_tokens, output_micro_usd_per_million_tokens, max_cost_usd
+      from settings where id = 1
     `.execute(migrated);
     expect(rows.rows[0]).toEqual({
       provider: 'openai',
       model: 'fictional-model',
       max_total_tokens: 2048,
+      structured_output_mode: 'json-schema',
+      input_micro_usd_per_million_tokens: 100000,
+      output_micro_usd_per_million_tokens: 200000,
+      max_cost_usd: 0.5,
     });
   });
 
@@ -195,5 +234,26 @@ describe('0004 web settings migration', () => {
     databases.push(db);
     await expect(runMigrations(db)).resolves.toBeUndefined();
     await expect(runMigrations(db)).resolves.toBeUndefined();
+  });
+
+  it('repairs legacy max cost settings that have no token rates', async () => {
+    const path = await pathForDatabase('web-settings-cost-repair');
+    const legacy = new Kysely<unknown>({
+      dialect: new SqliteDialect({ database: new BetterSqlite3(path) }),
+    });
+    const migrator = new Migrator({
+      db: legacy,
+      provider: { getMigrations: () => Promise.resolve(migrationsBeforeCostRateRepair) },
+    });
+    expect((await migrator.migrateToLatest()).error).toBeUndefined();
+    await sql`insert into settings (id, created_at, updated_at, max_cost_usd)
+      values (1, ${now}, ${now}, 0.5)`.execute(legacy);
+    await legacy.destroy();
+
+    const migrated = await openStorage({ path });
+    databases.push(migrated);
+    const { settings } = createRoleProofRepositories(migrated, () => new Date(now));
+
+    await expect(settings.get()).resolves.toEqual({});
   });
 });

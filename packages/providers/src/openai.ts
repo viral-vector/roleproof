@@ -5,6 +5,7 @@ import type {
   EvidenceMappingOutput,
   ProviderConfig,
   ProviderHealth,
+  LocalProviderModel,
   ProviderOperation,
   RequirementAnalysisInput,
   RequirementAnalysisOutput,
@@ -167,17 +168,8 @@ export class OpenAIProvider implements AIProvider {
 
   async healthCheck(): Promise<ProviderResult<ProviderHealth>> {
     try {
-      const response = await fetchJson(
-        this.#fetch,
-        MODELS_URL,
-        { method: 'GET', headers: { authorization: `Bearer ${this.#apiKey}` } },
-        this.config.requestTimeoutMs,
-        'health-check',
-      );
-      const modelAvailable =
-        isRecord(response.value) &&
-        Array.isArray(response.value.data) &&
-        response.value.data.some((model) => isRecord(model) && model.id === this.config.model);
+      const models = await this.listModels();
+      const modelAvailable = models.output.models.some((model) => model.id === this.config.model);
       return healthResult(
         this.config,
         MODELS_URL,
@@ -185,11 +177,48 @@ export class OpenAIProvider implements AIProvider {
         null,
         modelAvailable,
         true,
-        response.requestId,
+        models.metadata.requestId,
       );
     } catch (error) {
       const code = error instanceof ProviderError ? error.code : 'unavailable';
       return healthResult(this.config, MODELS_URL, 'unavailable', code, null, null);
     }
+  }
+
+  async listModels(): Promise<ProviderResult<{ models: readonly LocalProviderModel[] }>> {
+    const response = await fetchJson(
+      this.#fetch,
+      MODELS_URL,
+      { method: 'GET', headers: { authorization: `Bearer ${this.#apiKey}` } },
+      this.config.requestTimeoutMs,
+      'health-check',
+    );
+    const rawModels =
+      isRecord(response.value) && Array.isArray(response.value.data) ? response.value.data : [];
+    const models = rawModels
+      .filter(
+        (model): model is Record<string, unknown> =>
+          isRecord(model) && typeof model.id === 'string',
+      )
+      .map((model) => ({ id: model.id as string, structuredOutputSupported: true }))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    return {
+      output: { models },
+      metadata: executionMetadata(
+        this.config,
+        'health-check',
+        {
+          provider: this.config.provider,
+          model: this.config.model,
+          destination: this.config.destination,
+          endpointOrigin: this.endpointOrigin,
+          dataCategories: [],
+          redactionApplied: true,
+          redactionSummary: { categories: [], replacementCount: 0, inputChars: 0, outputChars: 0 },
+        },
+        { inputTokens: null, outputTokens: null, totalTokens: null, costMicroUsd: null },
+        response.requestId,
+      ),
+    };
   }
 }

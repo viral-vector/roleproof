@@ -6,20 +6,27 @@ import ResultMetric from './ResultMetric.vue';
 import { downloadAnalysis } from '../exports/download.js';
 
 const props = defineProps<{
-  analysis: LocalAnalyzeResponse['analysis'];
+  response: LocalAnalyzeResponse;
 }>();
 
 const strongMatches = computed(
   () =>
-    props.analysis.matchedRequirements.filter(
+    props.response.analysis.matchedRequirements.filter(
       (match) => match.classification === 'direct' || match.classification === 'strongly-related',
     ) ?? [],
 );
 const partialMatches = computed(
   () =>
-    props.analysis.matchedRequirements.filter(
+    props.response.analysis.matchedRequirements.filter(
       (match) => match.classification === 'partially-related',
     ) ?? [],
+);
+const resultModeLabel = computed(() =>
+  props.response.schemaVersion === '2.0' ? 'AI-enhanced guidance' : 'Deterministic fallback',
+);
+
+const aiEnhancement = computed(() =>
+  props.response.schemaVersion === '2.0' ? props.response.aiEnhancement : null,
 );
 
 function formatLabel(value: string) {
@@ -27,7 +34,7 @@ function formatLabel(value: string) {
 }
 
 function saveAnalysis(format: 'json' | 'markdown') {
-  downloadAnalysis(props.analysis, format);
+  downloadAnalysis(props.response.analysis, format);
 }
 </script>
 
@@ -39,7 +46,7 @@ function saveAnalysis(format: 'json' | 'markdown') {
         <h2 id="results-title">Evidence summary</h2>
       </div>
       <div class="result-heading-actions">
-        <span class="mode-badge">Deterministic baseline</span>
+        <span class="mode-badge">{{ resultModeLabel }}</span>
         <button class="export-button" type="button" @click="saveAnalysis('json')">
           Download JSON
         </button>
@@ -50,36 +57,101 @@ function saveAnalysis(format: 'json' | 'markdown') {
     </header>
 
     <div class="result-overview">
-      <div class="recommendation-card" :data-recommendation="analysis.recommendation">
+      <div class="recommendation-card" :data-recommendation="response.analysis.recommendation">
         <span>Recommendation</span>
-        <strong>{{ formatLabel(analysis.recommendation) }}</strong>
+        <strong>{{ formatLabel(response.analysis.recommendation) }}</strong>
         <p>A fit assessment, not a prediction of interview or hiring outcomes.</p>
       </div>
       <dl class="metric-grid">
-        <ResultMetric label="Fit score" :value="`${analysis.overallScore}/100`" />
-        <ResultMetric label="Confidence" :value="`${Math.round(analysis.confidence * 100)}%`" />
-        <ResultMetric label="Matched" :value="String(analysis.matchedRequirements.length)" />
-        <ResultMetric label="Missing" :value="String(analysis.missingRequirements.length)" />
+        <ResultMetric label="Fit score" :value="`${response.analysis.overallScore}/100`" />
+        <ResultMetric
+          label="Confidence"
+          :value="`${Math.round(response.analysis.confidence * 100)}%`"
+        />
+        <ResultMetric
+          label="Matched"
+          :value="String(response.analysis.matchedRequirements.length)"
+        />
+        <ResultMetric
+          label="Missing"
+          :value="String(response.analysis.missingRequirements.length)"
+        />
       </dl>
     </div>
 
     <section
       class="blocker-summary"
-      :data-state="analysis.hardBlockers.length > 0 ? 'blocked' : 'clear'"
+      :data-state="response.analysis.hardBlockers.length > 0 ? 'blocked' : 'clear'"
       aria-labelledby="blockers-title"
     >
       <div class="blocker-icon" aria-hidden="true">
-        <span v-if="analysis.hardBlockers.length > 0">!</span>
+        <span v-if="response.analysis.hardBlockers.length > 0">!</span>
         <span v-else>&#10003;</span>
       </div>
       <div>
         <h3 id="blockers-title">Eligibility blockers</h3>
-        <ul v-if="analysis.hardBlockers.length > 0">
-          <li v-for="blocker in analysis.hardBlockers" :key="blocker">{{ blocker }}</li>
+        <ul v-if="response.analysis.hardBlockers.length > 0">
+          <li v-for="blocker in response.analysis.hardBlockers" :key="blocker">{{ blocker }}</li>
         </ul>
         <p v-else>No hard blocker was detected from the explicit facts supplied.</p>
       </div>
     </section>
+
+    <div v-if="aiEnhancement !== null" class="ai-output-panel">
+      <header>
+        <div>
+          <p class="panel-kicker">Validated AI Output</p>
+          <h3>What the provider returned</h3>
+        </div>
+        <span class="mode-badge">Schema {{ response.schemaVersion }}</span>
+      </header>
+      <p>
+        This section shows the schema-validated AI enhancement only. The deterministic score,
+        recommendation, and blockers remain unchanged.
+      </p>
+      <section class="ai-output-section">
+        <h4>AI Requirement Interpretations</h4>
+        <ul class="evidence-list compact-list">
+          <li
+            v-for="item in aiEnhancement!.requirementAnalysis.requirements"
+            :key="item.requirementId"
+          >
+            <span class="classification" :data-classification="item.classification">{{
+              formatLabel(item.classification)
+            }}</span>
+            <p>{{ item.explanation }}</p>
+            <small>{{ item.evidenceIds.length }} evidence reference(s)</small>
+          </li>
+        </ul>
+      </section>
+      <section class="ai-output-section">
+        <h4>AI Evidence Mappings</h4>
+        <ul class="evidence-list compact-list">
+          <li v-for="item in aiEnhancement!.evidenceMapping.mappings" :key="item.requirementId">
+            <span class="classification" :data-classification="item.classification">{{
+              formatLabel(item.classification)
+            }}</span>
+            <p>{{ item.explanation }}</p>
+            <small>{{ item.evidenceIds.length }} evidence reference(s)</small>
+          </li>
+        </ul>
+      </section>
+      <section class="ai-output-section">
+        <h4>AI Application Suggestions</h4>
+        <ul class="evidence-list compact-list">
+          <li
+            v-for="item in aiEnhancement!.applicationSuggestions.suggestedEmphasis"
+            :key="item.text"
+          >
+            <span class="classification" :data-classification="item.classification">{{
+              formatLabel(item.classification)
+            }}</span>
+            <p>{{ item.text }}</p>
+            <small>{{ item.explanation }}</small>
+          </li>
+        </ul>
+      </section>
+    </div>
 
     <div class="evidence-grid">
       <article class="evidence-panel">
@@ -128,10 +200,10 @@ function saveAnalysis(format: 'json' | 'markdown') {
             <p class="panel-kicker">Gap review</p>
             <h3>Missing requirements</h3>
           </div>
-          <span class="count-badge">{{ analysis.missingRequirements.length }}</span>
+          <span class="count-badge">{{ response.analysis.missingRequirements.length }}</span>
         </header>
-        <ul v-if="analysis.missingRequirements.length > 0" class="evidence-list">
-          <li v-for="requirement in analysis.missingRequirements" :key="requirement.id">
+        <ul v-if="response.analysis.missingRequirements.length > 0" class="evidence-list">
+          <li v-for="requirement in response.analysis.missingRequirements" :key="requirement.id">
             <span class="classification" data-classification="unsupported">
               {{ requirement.importance }} &middot; {{ requirement.category }}
             </span>
@@ -147,10 +219,16 @@ function saveAnalysis(format: 'json' | 'markdown') {
             <p class="panel-kicker">Truth check</p>
             <h3>Unsupported claims</h3>
           </div>
-          <span class="count-badge">{{ analysis.unsupportedClaims.length }}</span>
+          <span class="count-badge">{{ response.analysis.unsupportedClaims.length }}</span>
         </header>
-        <ul v-if="analysis.unsupportedClaims.length > 0" class="evidence-list compact-list">
-          <li v-for="(claim, index) in analysis.unsupportedClaims" :key="`${claim.text}-${index}`">
+        <ul
+          v-if="response.analysis.unsupportedClaims.length > 0"
+          class="evidence-list compact-list"
+        >
+          <li
+            v-for="(claim, index) in response.analysis.unsupportedClaims"
+            :key="`${claim.text}-${index}`"
+          >
             <span class="classification" :data-classification="claim.classification">
               {{ formatLabel(claim.classification) }}
             </span>
@@ -169,11 +247,11 @@ function saveAnalysis(format: 'json' | 'markdown') {
             <p class="panel-kicker">Application guidance</p>
             <h3>Safe résumé emphasis</h3>
           </div>
-          <span class="count-badge">{{ analysis.suggestedEmphasis.length }}</span>
+          <span class="count-badge">{{ response.analysis.suggestedEmphasis.length }}</span>
         </header>
-        <ul v-if="analysis.suggestedEmphasis.length > 0" class="evidence-list">
+        <ul v-if="response.analysis.suggestedEmphasis.length > 0" class="evidence-list">
           <li
-            v-for="(suggestion, index) in analysis.suggestedEmphasis"
+            v-for="(suggestion, index) in response.analysis.suggestedEmphasis"
             :key="`${suggestion.text}-${index}`"
           >
             <span class="classification" :data-classification="suggestion.classification">
@@ -192,11 +270,11 @@ function saveAnalysis(format: 'json' | 'markdown') {
             <p class="panel-kicker">Review before use</p>
             <h3>Suggestions requiring confirmation</h3>
           </div>
-          <span class="count-badge">{{ analysis.suggestedAdditions.length }}</span>
+          <span class="count-badge">{{ response.analysis.suggestedAdditions.length }}</span>
         </header>
-        <ul v-if="analysis.suggestedAdditions.length > 0" class="evidence-list">
+        <ul v-if="response.analysis.suggestedAdditions.length > 0" class="evidence-list">
           <li
-            v-for="(suggestion, index) in analysis.suggestedAdditions"
+            v-for="(suggestion, index) in response.analysis.suggestedAdditions"
             :key="`${suggestion.text}-${index}`"
           >
             <span class="classification" :data-classification="suggestion.classification">
@@ -215,18 +293,18 @@ function saveAnalysis(format: 'json' | 'markdown') {
             <p class="panel-kicker">Prepare</p>
             <h3>Interview topics</h3>
           </div>
-          <span class="count-badge">{{ analysis.interviewTopics.length }}</span>
+          <span class="count-badge">{{ response.analysis.interviewTopics.length }}</span>
         </header>
-        <ul v-if="analysis.interviewTopics.length > 0" class="topic-list">
-          <li v-for="topic in analysis.interviewTopics" :key="topic">{{ topic }}</li>
+        <ul v-if="response.analysis.interviewTopics.length > 0" class="topic-list">
+          <li v-for="topic in response.analysis.interviewTopics" :key="topic">{{ topic }}</li>
         </ul>
         <p v-else class="empty-state">No interview topic was generated.</p>
       </article>
     </div>
 
     <footer class="result-footer">
-      <span>Engine {{ analysis.metadata.engineVersion }}</span>
-      <span>Schema {{ analysis.schemaVersion }}</span>
+      <span>Engine {{ response.analysis.metadata.engineVersion }}</span>
+      <span>Schema {{ response.analysis.schemaVersion }}</span>
       <span>Generated locally</span>
     </footer>
   </section>

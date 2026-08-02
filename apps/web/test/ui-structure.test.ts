@@ -27,6 +27,10 @@ describe('local UI structure', () => {
     expect(results).toContain('Interview topics');
     expect(results).toContain('Download JSON');
     expect(results).toContain('Download Markdown');
+    expect(results).toContain('AI-enhanced guidance');
+    expect(results).toContain('Deterministic fallback');
+    expect(results).toContain('Validated AI Output');
+    expect(results).toContain('AI Requirement Interpretations');
   });
 
   it('keeps file input and analysis submission on the analyze screen only', async () => {
@@ -37,6 +41,10 @@ describe('local UI structure', () => {
       'accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"',
     );
     expect(analyze).toContain('Selection stays in your browser until you run analysis.');
+    expect(analyze).toContain('AI-enhanced analysis');
+    expect(analyze).toContain('I confirm RoleProof may send redacted analysis inputs');
+    expect(analyze).toContain('progress');
+    expect(analyze).toContain('class="form-actions"');
     expect(analyze).toContain(':aria-busy="running"');
     expect(analyze).toContain('<AnalysisResults');
     expect(analyze).not.toContain('Eligibility blockers');
@@ -99,5 +107,13 @@ describe('local UI structure', () => {
     expect(settings).toContain('Redact employer names');
     expect(settings).toContain('defaultExportFormat');
     expect(settings).toContain('provider');
+    expect(settings).toContain('getProviderCredentialStatus');
+    expect(settings).toContain('listProviderModels');
+    expect(settings).toContain('Load models');
+    expect(settings).toContain('settings-model-select');
+    expect(settings).toContain('Save API key');
+    expect(settings).toContain('Remove stored key');
+    expect(settings).toContain('structuredOutputMode');
+    expect(settings).toContain('inputMicroUsdPerMillionTokens');
   });
 });

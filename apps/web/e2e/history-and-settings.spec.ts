@@ -74,6 +74,7 @@ test('persists settings changes and reflects them when reopening the page', asyn
   await expect(page.getByRole('status')).toContainText('Settings saved locally.');
 
   await page.reload();
+  await expect(page.getByRole('button', { name: 'Save settings' })).toBeVisible();
   await expect(page.getByLabel('Default export format')).toHaveValue('markdown');
   await expect(page.getByLabel('Redact employer names')).toBeChecked();
 
@@ -81,6 +82,7 @@ test('persists settings changes and reflects them when reopening the page', asyn
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByRole('status')).toContainText('Settings saved locally.');
   await page.reload();
+  await expect(page.getByRole('button', { name: 'Save settings' })).toBeVisible();
   await expect(page.getByLabel('Default export format')).toHaveValue('');
 
   await page.getByLabel('Provider', { exact: true }).selectOption('openai');
@@ -88,6 +90,7 @@ test('persists settings changes and reflects them when reopening the page', asyn
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByRole('status')).toContainText('Settings saved locally.');
   await page.reload();
+  await expect(page.getByRole('button', { name: 'Save settings' })).toBeVisible();
   await expect(page.getByLabel('Provider', { exact: true })).toHaveValue('openai');
   await expect(page.getByLabel('Model', { exact: true })).toHaveValue('fictional-model');
 
@@ -95,6 +98,7 @@ test('persists settings changes and reflects them when reopening the page', asyn
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByRole('status')).toContainText('Settings saved locally.');
   await page.reload();
+  await expect(page.getByRole('button', { name: 'Save settings' })).toBeVisible();
   await expect(page.getByLabel('Provider', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('Model', { exact: true })).toHaveValue('');
 });

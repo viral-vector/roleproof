@@ -2,10 +2,26 @@ import { describe, expect, it } from 'vitest';
 import {
   LocalAnalyzeResponseSchema,
   LocalHistoryListResponseSchema,
+  LocalProviderModelsResponseSchema,
   LocalSettingsResponseSchema,
   LocalSettingsSchema,
+  type ApplicationSuggestionInput,
+  type ApplicationSuggestionOutput,
+  type EvidenceMappingInput,
+  type EvidenceMappingOutput,
   type LocalHistoryItem,
+  type ProviderConfig,
+  type ProviderExecutionMetadata,
+  type ProviderHealth,
+  type RequirementAnalysisInput,
+  type RequirementAnalysisOutput,
 } from '@roleproof/shared';
+import {
+  ProviderError,
+  type AIProvider,
+  type ProviderCallContext,
+  type ProviderResult,
+} from '@roleproof/providers';
 import {
   closeStorage,
   createRoleProofRepositories,
@@ -15,7 +31,7 @@ import {
   type StorageDatabase,
 } from '@roleproof/storage';
 
-import { createLocalWebApp } from '../src/server.js';
+import { createLocalWebApp, type ProviderCredentialStore } from '../src/server.js';
 
 const resumeText = [
   'Avery Morgan',
@@ -47,11 +63,140 @@ function analyzePayload(resume: string, job: string) {
   return { schemaVersion: '1.0', mode: 'deterministic', resumeText: resume, jobText: job };
 }
 
+function aiAnalyzePayload(resume: string, job: string) {
+  return {
+    schemaVersion: '1.0',
+    mode: 'ai-enhanced',
+    resumeText: resume,
+    jobText: job,
+    confirmProviderTransmission: true,
+  };
+}
+
+function executionMetadata(
+  config: ProviderConfig,
+  context: ProviderCallContext<unknown>,
+  operation: ProviderExecutionMetadata['operation'],
+): ProviderExecutionMetadata {
+  return {
+    operation,
+    provider: config.provider,
+    model: config.model,
+    destination: config.destination,
+    manifest: context.manifest,
+    usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, costMicroUsd: null },
+    requestId: `request:${operation.replaceAll('-', '_')}`,
+    errorCode: null,
+  };
+}
+
+function successfulProvider(config: ProviderConfig, calls: string[]): AIProvider {
+  return {
+    id: config.provider,
+    config,
+    endpointOrigin:
+      config.baseUrl === null ? 'https://api.openai.com' : new URL(config.baseUrl).origin,
+    analyzeRequirements(
+      context: ProviderCallContext<RequirementAnalysisInput>,
+    ): Promise<ProviderResult<RequirementAnalysisOutput>> {
+      calls.push('analyze-requirements');
+      return Promise.resolve({
+        output: {
+          requirements: context.input.requirements.map((requirement) => ({
+            requirementId: requirement.requirementId,
+            baselineClassification: requirement.baselineClassification,
+            classification: requirement.baselineClassification,
+            evidenceIds: requirement.evidenceIds,
+            explanation: 'Fictional provider explanation.',
+          })),
+        },
+        metadata: executionMetadata(config, context, 'analyze-requirements'),
+      });
+    },
+    mapEvidence(
+      context: ProviderCallContext<EvidenceMappingInput>,
+    ): Promise<ProviderResult<EvidenceMappingOutput>> {
+      calls.push('map-evidence');
+      return Promise.resolve({
+        output: {
+          mappings: context.input.requirements.map((requirement) => ({
+            requirementId: requirement.requirementId,
+            baselineClassification: requirement.baselineClassification,
+            classification: requirement.baselineClassification,
+            evidenceIds: requirement.evidenceIds,
+            explanation: 'Fictional evidence mapping.',
+          })),
+        },
+        metadata: executionMetadata(config, context, 'map-evidence'),
+      });
+    },
+    suggestApplicationChanges(
+      context: ProviderCallContext<ApplicationSuggestionInput>,
+    ): Promise<ProviderResult<ApplicationSuggestionOutput>> {
+      calls.push('suggest-application-changes');
+      return Promise.resolve({
+        output: {
+          suggestedEmphasis: [],
+          suggestedAdditions: [],
+          interviewTopics: [],
+          coverLetterAngles: [],
+        },
+        metadata: executionMetadata(config, context, 'suggest-application-changes'),
+      });
+    },
+    healthCheck(): Promise<ProviderResult<ProviderHealth>> {
+      return Promise.reject(new ProviderError('configuration', 'health-check'));
+    },
+    listModels(): Promise<ProviderResult<{ models: readonly [] }>> {
+      return Promise.reject(new ProviderError('configuration', 'health-check'));
+    },
+  };
+}
+
 async function appWithStorage() {
   const database: StorageDatabase = await openStorage({ path: ':memory:' });
   const repositories: RoleProofRepositories = createRoleProofRepositories(database);
   const app = createLocalWebApp({ repositories, databasePath: ':memory:' });
   return { app, database, repositories };
+}
+
+async function appWithAIProvider(providerFactory: (config: ProviderConfig) => AIProvider) {
+  const database: StorageDatabase = await openStorage({ path: ':memory:' });
+  const repositories: RoleProofRepositories = createRoleProofRepositories(database);
+  const app = createLocalWebApp({
+    repositories,
+    databasePath: ':memory:',
+    providerFactory,
+  } as unknown as Parameters<typeof createLocalWebApp>[0]);
+  return { app, database, repositories };
+}
+
+function memoryCredentialStore(seed: Partial<Record<'openai' | 'openai-compatible', string>> = {}) {
+  const values = new Map(Object.entries(seed));
+  const store: ProviderCredentialStore = {
+    get(provider) {
+      return Promise.resolve(values.get(provider) ?? null);
+    },
+    set(provider, apiKey) {
+      values.set(provider, apiKey);
+      return Promise.resolve();
+    },
+    delete(provider) {
+      const removed = values.delete(provider);
+      return Promise.resolve(removed);
+    },
+  };
+  return { store, values };
+}
+
+async function configureLocalProvider(repositories: RoleProofRepositories) {
+  await repositories.settings.update({
+    provider: 'openai-compatible',
+    model: 'fictional-model',
+    destination: 'local',
+    baseUrl: 'http://127.0.0.1:11434/v1',
+    structuredOutputMode: 'json-object',
+  });
 }
 
 async function closeApp(app: ReturnType<typeof createLocalWebApp>, database?: StorageDatabase) {
@@ -237,6 +382,112 @@ describe('local history API', () => {
   });
 });
 
+describe('local AI analyze API', () => {
+  it('never calls a configured provider for deterministic analysis', async () => {
+    const calls: string[] = [];
+    const { app, database, repositories } = await appWithAIProvider((config) =>
+      successfulProvider(config, calls),
+    );
+
+    try {
+      await configureLocalProvider(repositories);
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: analyzePayload(resumeText, jobText),
+      });
+      const body = LocalAnalyzeResponseSchema.parse(JSON.parse(response.body));
+
+      expect(response.statusCode).toBe(200);
+      expect(body.schemaVersion).toBe('1.0');
+      expect(calls).toEqual([]);
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('rejects AI-enhanced analysis when provider settings are missing', async () => {
+    const calls: string[] = [];
+    const { app, database } = await appWithAIProvider((config) =>
+      successfulProvider(config, calls),
+    );
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: aiAnalyzePayload(resumeText, jobText),
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(calls).toEqual([]);
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('returns and persists an enhanced envelope from a mocked provider', async () => {
+    const calls: string[] = [];
+    const { app, database, repositories } = await appWithAIProvider((config) =>
+      successfulProvider(config, calls),
+    );
+
+    try {
+      await configureLocalProvider(repositories);
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: aiAnalyzePayload(resumeText, jobText),
+      });
+      const body = LocalAnalyzeResponseSchema.parse(JSON.parse(response.body));
+
+      expect(response.statusCode).toBe(200);
+      expect(body.schemaVersion).toBe('2.0');
+      expect(calls).toEqual([
+        'analyze-requirements',
+        'map-evidence',
+        'suggest-application-changes',
+      ]);
+      if (body.schemaVersion !== '2.0') throw new Error('Expected enhanced response');
+      expect(body.aiEnhancement.baselineAnalysisId).toBe(body.analysis.id);
+      await expect(repositories.aiEnhancements.get(body.analysis.id)).resolves.toBeDefined();
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('falls back to the deterministic envelope and records a provider failure', async () => {
+    const calls: string[] = [];
+    const { app, database, repositories } = await appWithAIProvider((config) => ({
+      ...successfulProvider(config, calls),
+      analyzeRequirements() {
+        calls.push('analyze-requirements');
+        return Promise.reject(new ProviderError('timeout', 'analyze-requirements'));
+      },
+    }));
+
+    try {
+      await configureLocalProvider(repositories);
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: aiAnalyzePayload(resumeText, jobText),
+      });
+      const body = LocalAnalyzeResponseSchema.parse(JSON.parse(response.body));
+      const callsStored = await repositories.providerCalls.list(body.analysis.id);
+
+      expect(response.statusCode).toBe(200);
+      expect(body.schemaVersion).toBe('1.0');
+      expect(calls).toEqual(['analyze-requirements']);
+      expect(callsStored).toHaveLength(1);
+      expect(callsStored[0]?.status).toBe('failed');
+      expect(callsStored[0]?.errorCode).toBe('timeout');
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+});
+
 describe('local settings API', () => {
   it('returns empty settings with the resolved database path', async () => {
     const { app, database } = await appWithStorage();
@@ -246,7 +497,13 @@ describe('local settings API', () => {
       const body = LocalSettingsResponseSchema.parse(JSON.parse(response.body));
 
       expect(response.statusCode).toBe(200);
-      expect(body.settings).toEqual({});
+      expect(body.settings).toEqual({
+        provider: 'openai-compatible',
+        model: 'phi4-mini:latest',
+        destination: 'local',
+        baseUrl: 'http://localhost:11434/v1',
+        structuredOutputMode: 'json-schema',
+      });
       expect(body.databasePath).toBe(':memory:');
     } finally {
       await closeApp(app, database);
@@ -333,7 +590,10 @@ describe('local settings API', () => {
           defaultExportFormat: 'markdown',
           maxTotalTokens: 4096,
           maxCostUsd: 0.5,
+          inputMicroUsdPerMillionTokens: 100_000,
+          outputMicroUsdPerMillionTokens: 200_000,
           providerTimeoutMs: 60_000,
+          structuredOutputMode: 'json-object',
         },
       });
       expect(seed.statusCode).toBe(200);
@@ -348,16 +608,31 @@ describe('local settings API', () => {
           defaultExportFormat: null,
           maxTotalTokens: null,
           maxCostUsd: null,
+          inputMicroUsdPerMillionTokens: null,
+          outputMicroUsdPerMillionTokens: null,
           providerTimeoutMs: null,
+          structuredOutputMode: null,
         },
       });
       const fetch = await app.inject({ method: 'GET', url: '/api/settings' });
 
       expect(cleared.statusCode).toBe(200);
       const clearedBody = LocalSettingsResponseSchema.parse(JSON.parse(cleared.body));
-      expect(clearedBody.settings).toEqual({ destination: 'local' });
+      expect(clearedBody.settings).toEqual({
+        provider: 'openai-compatible',
+        model: 'phi4-mini:latest',
+        destination: 'local',
+        baseUrl: 'http://localhost:11434/v1',
+        structuredOutputMode: 'json-schema',
+      });
       const fetchBody = LocalSettingsResponseSchema.parse(JSON.parse(fetch.body));
-      expect(fetchBody.settings).toEqual({ destination: 'local' });
+      expect(fetchBody.settings).toEqual({
+        provider: 'openai-compatible',
+        model: 'phi4-mini:latest',
+        destination: 'local',
+        baseUrl: 'http://localhost:11434/v1',
+        structuredOutputMode: 'json-schema',
+      });
     } finally {
       await closeApp(app, database);
     }
@@ -383,7 +658,13 @@ describe('local settings API', () => {
       expect(incompatible.statusCode).toBe(400);
       const fetchedSettings = LocalSettingsResponseSchema.parse(JSON.parse(fetch.body));
       expect(LocalSettingsSchema.safeParse(fetchedSettings.settings).success).toBe(true);
-      expect(fetchedSettings.settings).toEqual({});
+      expect(fetchedSettings.settings).toEqual({
+        provider: 'openai-compatible',
+        model: 'phi4-mini:latest',
+        destination: 'local',
+        baseUrl: 'http://localhost:11434/v1',
+        structuredOutputMode: 'json-schema',
+      });
     } finally {
       await closeApp(app, database);
     }
@@ -404,6 +685,149 @@ describe('local settings API', () => {
       expect(updated.statusCode).toBe(503);
     } finally {
       await app.close();
+    }
+  });
+
+  it('stores provider credentials in the injected key store without echoing secrets', async () => {
+    const { store, values } = memoryCredentialStore();
+    const app = createLocalWebApp({ credentialStore: store });
+
+    try {
+      const saved = await app.inject({
+        method: 'PUT',
+        url: '/api/provider-credentials',
+        payload: { provider: 'openai', apiKey: 'fictional-secret' },
+      });
+      const status = await app.inject({ method: 'GET', url: '/api/provider-credentials' });
+
+      expect(saved.statusCode).toBe(200);
+      expect(saved.body).not.toContain('fictional-secret');
+      expect(values.get('openai')).toBe('fictional-secret');
+      expect(JSON.parse(status.body)).toEqual({
+        schemaVersion: '1.0',
+        credentials: [
+          { provider: 'openai', configured: true, source: 'key-store' },
+          { provider: 'openai-compatible', configured: false, source: 'none' },
+        ],
+      });
+      const removed = await app.inject({
+        method: 'DELETE',
+        url: '/api/provider-credentials/openai',
+      });
+      expect(JSON.parse(removed.body)).toEqual({ removed: true });
+      expect(values.has('openai')).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reports environment credentials without persisting them to the key store', async () => {
+    const { store, values } = memoryCredentialStore();
+    const app = createLocalWebApp({
+      credentialStore: store,
+      credentialEnvironment: { OPENAI_API_KEY: 'fictional-env-secret' },
+    });
+
+    try {
+      const status = await app.inject({ method: 'GET', url: '/api/provider-credentials' });
+
+      expect(JSON.parse(status.body)).toEqual({
+        schemaVersion: '1.0',
+        credentials: [
+          { provider: 'openai', configured: true, source: 'environment' },
+          { provider: 'openai-compatible', configured: false, source: 'none' },
+        ],
+      });
+      expect(values.size).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects malformed credential requests with content-free errors', async () => {
+    const { store, values } = memoryCredentialStore();
+    const app = createLocalWebApp({ credentialStore: store });
+
+    try {
+      const invalidSave = await app.inject({
+        method: 'PUT',
+        url: '/api/provider-credentials',
+        payload: { provider: 'unsupported', apiKey: 'fictional-secret' },
+      });
+      const invalidDelete = await app.inject({
+        method: 'DELETE',
+        url: '/api/provider-credentials/unsupported',
+      });
+
+      expect(invalidSave.statusCode).toBe(400);
+      expect(invalidDelete.statusCode).toBe(400);
+      expect(invalidSave.body).not.toContain('fictional-secret');
+      expect(values.size).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('lists provider models from current local provider settings without career data', async () => {
+    const calls: ProviderConfig[] = [];
+    const { app, database, repositories } = await appWithAIProvider((config) => {
+      calls.push(config);
+      return {
+        ...successfulProvider(config, []),
+        listModels(): Promise<
+          ProviderResult<{ models: readonly [{ id: 'zeta' }, { id: 'alpha' }] }>
+        > {
+          return Promise.resolve({
+            output: { models: [{ id: 'zeta' }, { id: 'alpha' }] },
+            metadata: {
+              operation: 'health-check',
+              provider: config.provider,
+              model: config.model,
+              destination: config.destination,
+              manifest: {
+                provider: config.provider,
+                model: config.model,
+                destination: config.destination,
+                endpointOrigin: 'http://127.0.0.1:11434',
+                dataCategories: [],
+                redactionApplied: true,
+                redactionSummary: {
+                  categories: [],
+                  replacementCount: 0,
+                  inputChars: 0,
+                  outputChars: 0,
+                },
+              },
+              usage: {
+                inputTokens: null,
+                outputTokens: null,
+                totalTokens: null,
+                costMicroUsd: null,
+              },
+              requestId: 'models-request-1',
+              errorCode: null,
+            },
+          });
+        },
+      };
+    });
+    try {
+      await configureLocalProvider(repositories);
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/provider-models?provider=openai-compatible&destination=local&baseUrl=http%3A%2F%2F127.0.0.1%3A11434%2Fv1',
+      });
+      const body = LocalProviderModelsResponseSchema.parse(JSON.parse(response.body));
+
+      expect(response.statusCode).toBe(200);
+      expect(body.models.map((model) => model.id)).toEqual(['zeta', 'alpha']);
+      expect(calls[0]).toMatchObject({
+        provider: 'openai-compatible',
+        destination: 'local',
+        baseUrl: 'http://127.0.0.1:11434/v1',
+      });
+    } finally {
+      await closeApp(app, database);
     }
   });
 });

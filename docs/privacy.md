@@ -61,8 +61,12 @@ metadata. An explicit profile still uses the existing database read-only.
 ## Provider Transmission
 
 - Provider selection is explicit; API-key environment variables never activate AI.
+- The local web Settings screen stores API keys only in Windows Credential Manager in the current
+  local build. Settings API responses expose credential status only, never secret values.
 - Before a provider call, stderr displays provider, model, destination, endpoint origin, data
   categories, and enabled redaction categories.
+- Provider model-list and health-check calls request endpoint metadata only; they do not include
+  résumé or job content.
 - OpenAI uses the fixed `https://api.openai.com` origin. A compatible `local` destination must use a
   loopback host. Hosted and custom compatible endpoints require HTTPS and credentials.
 - Requests contain selected requirement text, deterministic classifications, and minimized evidence,

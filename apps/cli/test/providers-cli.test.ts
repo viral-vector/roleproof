@@ -100,7 +100,7 @@ function operationAndInput(init?: RequestInit): {
     body.response_format?.json_schema?.name?.replaceAll('_', '-') ??
     body.text?.format?.name?.replaceAll('_', '-') ??
     '';
-  const raw = body.messages?.[1]?.content ?? body.input?.[1]?.content[0]?.text ?? '';
+  const raw = body.messages?.at(-1)?.content ?? body.input?.[1]?.content[0]?.text ?? '';
   return { input: JSON.parse(raw) as Record<string, unknown>, operation };
 }
 
@@ -733,6 +733,30 @@ describe('Phase 3 provider CLI integration', () => {
       data: { health: { status: 'healthy' } },
     });
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [{ id: 'z-model' }, { id: 'a-model' }] }), {
+        status: 200,
+      }),
+    );
+    const models = await invoke([
+      'providers',
+      'models',
+      '--provider',
+      'openai-compatible',
+      '--destination',
+      'local',
+      '--base-url',
+      'http://localhost:11434/v1',
+      '--format',
+      'json',
+    ]);
+    expect(models.exitCode).toBe(0);
+    expect(CommandEnvelopeSchema.parse(JSON.parse(models.stdout))).toMatchObject({
+      command: 'providers.models',
+      data: { models: [{ id: 'a-model' }, { id: 'z-model' }] },
+    });
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBeUndefined();
 
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ data: [{ id: 'other-model' }] }), { status: 200 }),
