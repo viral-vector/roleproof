@@ -74,7 +74,17 @@ describe('local UI structure', () => {
     const analyze = await readClientFile('features/analyze/AnalyzeView.vue');
 
     expect(analyze).toContain('getSettings');
+    expect(analyze).toContain('updateSettings');
     expect(analyze).toContain('AI transmission disclosure');
+    expect(analyze).toContain('Analysis provider');
+    expect(analyze).toContain('Analysis model');
+    expect(analyze).toContain('listProviderModels');
+    expect(analyze).toContain('Load models');
+    expect(analyze).not.toContain('<span>Provider destination</span>');
+    expect(analyze).not.toContain('<span>Provider base URL</span>');
+    expect(analyze).toContain('Apply provider settings');
+    expect(analyze).toContain('providerSelectionDirty');
+    expect(analyze).toContain('Provider settings changed. Review the updated disclosure');
     expect(analyze).toContain('Provider');
     expect(analyze).toContain('Model');
     expect(analyze).toContain('Destination');
@@ -82,7 +92,8 @@ describe('local UI structure', () => {
     expect(analyze).toContain('Redaction');
     expect(analyze).toContain('Redacted analysis inputs will leave this machine');
     expect(analyze).toContain('No AI provider is configured');
-    expect(analyze).toContain(':disabled="running || disclosureLoading || !disclosureConfigured"');
+    expect(analyze).toContain('applyingProviderSettings');
+    expect(analyze).toContain('!disclosureConfigured');
   });
 
   it('separates the landing hero from the analysis comparison workspace', async () => {

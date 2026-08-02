@@ -359,7 +359,7 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
           reply.raw.end();
           return;
         }
-        const settings = await repositories.settings.get();
+        const settings = defaultLocalAiSettings(await repositories.settings.get());
         const config = configFromSettings(settings);
         const inputs = buildProviderInputs(
           storedAnalysis.analysis,
@@ -894,7 +894,7 @@ async function enhanceStoredAnalysis(
   providerFactory: (config: ProviderConfig) => AIProvider | Promise<AIProvider>,
   stored: PersistedAnalysis,
 ): Promise<unknown> {
-  const settings = await repositories.settings.get();
+  const settings = defaultLocalAiSettings(await repositories.settings.get());
   let config: ProviderConfig;
   let provider: AIProvider;
   try {

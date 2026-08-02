@@ -1,7 +1,11 @@
 import { readFile } from 'node:fs/promises';
 
 import { expect, test } from '@playwright/test';
-import { AnalysisEnvelopeSchema, EnhancedAnalysisEnvelopeSchema } from '@roleproof/shared';
+import {
+  AnalysisEnvelopeSchema,
+  EnhancedAnalysisEnvelopeSchema,
+  LocalSettingsResponseSchema,
+} from '@roleproof/shared';
 
 import { createDocx } from '@roleproof/test-utils';
 
@@ -182,11 +186,12 @@ test('discloses the configured AI provider, destination, endpoint, and redaction
   await page.getByLabel('AI-enhanced analysis').check();
 
   await expect(page.getByText('AI transmission disclosure')).toBeVisible();
-  await expect(page.getByText('OpenAI-compatible')).toBeVisible();
-  await expect(page.getByText('fictional-model')).toBeVisible();
-  await expect(page.getByText('http://localhost:11434/v1')).toBeVisible();
-  await expect(page.getByText('Employer names')).toBeVisible();
-  await expect(page.getByText('Project Hermes')).toBeVisible();
+  const disclosure = page.locator('.disclosure-list');
+  await expect(disclosure).toContainText('OpenAI-compatible');
+  await expect(disclosure).toContainText('fictional-model');
+  await expect(disclosure).toContainText('http://localhost:11434/v1');
+  await expect(disclosure).toContainText('Employer names');
+  await expect(disclosure).toContainText('Project Hermes');
 
   const saveHosted = await page.request.put('/api/settings', {
     data: {
@@ -211,6 +216,138 @@ test('discloses the configured AI provider, destination, endpoint, and redaction
       redactEmployer: false,
       redactClearance: false,
       redactionTerms: [],
+      structuredOutputMode: null,
+    },
+  });
+  expect(reset.ok()).toBeTruthy();
+});
+
+test('persists Analyze provider selections before enabling transmission consent', async ({ page }) => {
+  await page.route('**/api/provider-models?**', async (route) => {
+    const provider = new URL(route.request().url()).searchParams.get('provider');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schemaVersion: '1.0',
+        models:
+          provider === 'openai'
+            ? [{ id: 'fictional-hosted-model' }]
+            : [{ id: 'fictional-local-model' }, { id: 'fictional-updated-model' }],
+      }),
+    });
+  });
+
+  const save = await page.request.put('/api/settings', {
+    data: {
+      provider: 'openai-compatible',
+      model: 'fictional-local-model',
+      destination: 'local',
+      baseUrl: 'http://localhost:11434/v1',
+      structuredOutputMode: 'json-schema',
+    },
+  });
+  expect(save.ok()).toBeTruthy();
+
+  await page.goto('/analyze');
+  await page.getByLabel('AI-enhanced analysis').check();
+  await expect(page.getByLabel('Analysis provider')).toHaveValue('openai-compatible');
+  await expect(page.getByLabel('Analysis model')).toHaveValue('fictional-local-model');
+  expect(await page.getByLabel('Analysis model').evaluate((element) => element.tagName)).toBe(
+    'SELECT',
+  );
+  await expect(page.getByLabel('Provider destination')).toHaveCount(0);
+  await expect(page.getByLabel('Provider base URL')).toHaveCount(0);
+
+  const consent = page.getByLabel(/I confirm RoleProof may send redacted analysis inputs/u);
+  await page.getByRole('button', { name: 'Load models' }).click();
+  await page.getByLabel('Analysis model').selectOption('fictional-updated-model');
+  await expect(consent).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Apply provider settings' }).click();
+  await expect(page.getByRole('status')).toContainText('Provider settings applied.');
+  await expect(consent).toBeEnabled();
+  await expect(page.locator('.disclosure-list')).toContainText('fictional-updated-model');
+
+  await consent.check();
+  await page.getByLabel('Analysis provider').selectOption('openai');
+  await expect(consent).not.toBeChecked();
+  await expect(consent).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Load models' }).click();
+  await expect(page.getByLabel('Analysis model')).toHaveValue('fictional-hosted-model');
+  await page.getByRole('button', { name: 'Apply provider settings' }).click();
+  await expect(page.locator('.disclosure-list')).toContainText('OpenAI (hosted)');
+  await expect(page.locator('.disclosure-list')).toContainText('fictional-hosted-model');
+  await expect(page.locator('.disclosure-list')).toContainText('https://api.openai.com');
+
+  const stored = await page.request.get('/api/settings');
+  expect(stored.ok()).toBeTruthy();
+  const storedSettings = LocalSettingsResponseSchema.parse(await stored.json()).settings;
+  expect(storedSettings).toMatchObject({
+    provider: 'openai',
+    model: 'fictional-hosted-model',
+    destination: 'hosted',
+  });
+
+  const reset = await page.request.put('/api/settings', {
+    data: {
+      provider: null,
+      model: null,
+      destination: null,
+      baseUrl: null,
+      structuredOutputMode: null,
+    },
+  });
+  expect(reset.ok()).toBeTruthy();
+});
+
+test('invalidates consent when provider settings change before submission', async ({ page }) => {
+  const save = await page.request.put('/api/settings', {
+    data: {
+      provider: 'openai-compatible',
+      model: 'fictional-reviewed-model',
+      destination: 'local',
+      baseUrl: 'http://localhost:11434/v1',
+      structuredOutputMode: 'json-schema',
+    },
+  });
+  expect(save.ok()).toBeTruthy();
+
+  let analyzeRequests = 0;
+  await page.route('**/api/analyze/stream', async (route) => {
+    analyzeRequests += 1;
+    await route.abort();
+  });
+
+  await page.goto('/analyze');
+  await page.getByLabel('Resume text').fill(resumeText);
+  await page.getByLabel('Job description').fill(jobText);
+  await page.getByLabel('AI-enhanced analysis').check();
+  const consent = page.getByLabel(/I confirm RoleProof may send redacted analysis inputs/u);
+  await consent.check();
+
+  const changed = await page.request.put('/api/settings', {
+    data: { model: 'fictional-externally-changed-model' },
+  });
+  expect(changed.ok()).toBeTruthy();
+
+  await page.getByRole('button', { name: 'Analyze role fit' }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Provider settings changed. Review the updated disclosure and confirm again.',
+  );
+  expect(analyzeRequests).toBe(0);
+  await expect(consent).not.toBeChecked();
+  await expect(page.locator('.disclosure-list')).toContainText(
+    'fictional-externally-changed-model',
+  );
+
+  const reset = await page.request.put('/api/settings', {
+    data: {
+      provider: null,
+      model: null,
+      destination: null,
+      baseUrl: null,
       structuredOutputMode: null,
     },
   });

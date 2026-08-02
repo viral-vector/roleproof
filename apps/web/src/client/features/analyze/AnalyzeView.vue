@@ -2,7 +2,13 @@
 import { computed, ref, watch } from 'vue';
 import type { LocalAnalyzeResponse, LocalSettings } from '@roleproof/shared';
 
-import { analyzeLocalStream, getSettings, parseResumeFile } from '../../api/client.js';
+import {
+  analyzeLocalStream,
+  getSettings,
+  listProviderModels,
+  parseResumeFile,
+  updateSettings,
+} from '../../api/client.js';
 import AnalysisResults from '../../components/AnalysisResults.vue';
 import PrimaryButton from '../../components/PrimaryButton.vue';
 import TextareaField from '../../components/TextareaField.vue';
@@ -24,6 +30,13 @@ const progressMessage = ref('');
 const disclosureSettings = ref<LocalSettings | null>(null);
 const disclosureLoading = ref(false);
 const disclosureError = ref('');
+const providerDraft = ref<'openai' | 'openai-compatible'>('openai-compatible');
+const modelDraft = ref('');
+const availableModels = ref<Array<{ id: string }>>([]);
+const loadingModels = ref(false);
+const applyingProviderSettings = ref(false);
+const providerSettingsError = ref('');
+const providerSettingsNotice = ref('');
 
 const progressPercent = computed(() =>
   Math.round((progressCompleted.value / progressTotal.value) * 100),
@@ -42,7 +55,7 @@ const effectiveDestination = computed(() => {
 const providerLabel = computed(() => {
   const provider = disclosureSettings.value?.provider;
   if (provider === 'openai') return 'OpenAI (hosted)';
-  if (provider === 'openai-compatible') return 'OpenAI-compatible (custom)';
+  if (provider === 'openai-compatible') return 'OpenAI-compatible';
   return 'Not configured';
 });
 
@@ -82,13 +95,123 @@ const dataLeavesMachine = computed(
   () => effectiveDestination.value === 'hosted' || effectiveDestination.value === 'custom',
 );
 
+const providerSelectionDirty = computed(() => {
+  const settings = disclosureSettings.value;
+  if (settings == null) return true;
+  return (
+    providerDraft.value !== settings.provider ||
+    modelDraft.value !== (settings.model ?? '')
+  );
+});
+
+function applyDisclosureSettings(settings: LocalSettings) {
+  disclosureSettings.value = settings;
+  providerDraft.value = settings.provider === 'openai' ? 'openai' : 'openai-compatible';
+  modelDraft.value = settings.model ?? '';
+  availableModels.value = modelDraft.value.length === 0 ? [] : [{ id: modelDraft.value }];
+}
+
+function transmissionSettingsKey(settings: LocalSettings | null): string {
+  if (settings == null) return '';
+  return JSON.stringify({
+    provider: settings.provider ?? null,
+    model: settings.model ?? null,
+    destination: settings.destination ?? (settings.provider === 'openai' ? 'hosted' : 'local'),
+    baseUrl: settings.provider === 'openai' ? null : (settings.baseUrl ?? null),
+    redactEmployer: settings.redactEmployer ?? false,
+    redactClearance: settings.redactClearance ?? false,
+    redactionTerms: settings.redactionTerms ?? [],
+  });
+}
+
+function invalidateProviderConsent() {
+  confirmProviderTransmission.value = false;
+  providerSettingsError.value = '';
+  providerSettingsNotice.value = '';
+}
+
+function changeProvider() {
+  invalidateProviderConsent();
+  modelDraft.value = '';
+  availableModels.value = [];
+}
+
+function targetProviderEndpoint() {
+  const settings = disclosureSettings.value;
+  if (providerDraft.value === 'openai') {
+    return { destination: 'hosted' as const, baseUrl: null };
+  }
+  if (settings?.provider === 'openai-compatible') {
+    return {
+      destination: settings.destination ?? ('local' as const),
+      baseUrl: settings.baseUrl ?? 'http://localhost:11434/v1',
+    };
+  }
+  return { destination: 'local' as const, baseUrl: 'http://localhost:11434/v1' };
+}
+
+async function loadModels() {
+  invalidateProviderConsent();
+  loadingModels.value = true;
+  try {
+    const endpoint = targetProviderEndpoint();
+    const response = await listProviderModels({
+      provider: providerDraft.value,
+      destination: endpoint.destination,
+      baseUrl: endpoint.baseUrl,
+      model: modelDraft.value === '' ? null : modelDraft.value,
+    });
+    availableModels.value = response.models;
+    modelDraft.value = response.models.some((model) => model.id === modelDraft.value)
+      ? modelDraft.value
+      : (response.models[0]?.id ?? '');
+    providerSettingsNotice.value =
+      response.models.length === 0 ? 'No provider models were returned.' : 'Provider models loaded.';
+  } catch (cause) {
+    availableModels.value = modelDraft.value === '' ? [] : [{ id: modelDraft.value }];
+    providerSettingsError.value =
+      cause instanceof Error ? cause.message : 'Provider models are unavailable.';
+  } finally {
+    loadingModels.value = false;
+  }
+}
+
+async function applyProviderSettings() {
+  invalidateProviderConsent();
+  const model = modelDraft.value;
+  if (model === '') {
+    providerSettingsError.value = 'Load and select a model before applying provider settings.';
+    return;
+  }
+
+  applyingProviderSettings.value = true;
+  try {
+    const endpoint = targetProviderEndpoint();
+    const response = await updateSettings({
+      ...(disclosureSettings.value ?? {}),
+      provider: providerDraft.value,
+      model,
+      destination: endpoint.destination,
+      baseUrl: endpoint.baseUrl,
+    });
+    applyDisclosureSettings(response.settings);
+    disclosureError.value = '';
+    providerSettingsNotice.value = 'Provider settings applied.';
+  } catch (cause) {
+    providerSettingsError.value =
+      cause instanceof Error ? cause.message : 'Provider settings could not be applied.';
+  } finally {
+    applyingProviderSettings.value = false;
+  }
+}
+
 async function loadDisclosure() {
   disclosureLoading.value = true;
   disclosureError.value = '';
   confirmProviderTransmission.value = false;
   try {
     const response = await getSettings();
-    disclosureSettings.value = response.settings;
+    applyDisclosureSettings(response.settings);
   } catch (cause) {
     disclosureSettings.value = null;
     disclosureError.value =
@@ -137,6 +260,21 @@ async function runAnalysis() {
   progressMessage.value = 'Preparing analysis.';
 
   try {
+    if (analysisMode.value === 'ai-enhanced') {
+      if (!confirmProviderTransmission.value) {
+        throw new Error('Review the AI transmission disclosure and confirm provider use.');
+      }
+      const currentSettings = (await getSettings()).settings;
+      if (
+        transmissionSettingsKey(currentSettings) !==
+        transmissionSettingsKey(disclosureSettings.value)
+      ) {
+        applyDisclosureSettings(currentSettings);
+        confirmProviderTransmission.value = false;
+        providerSettingsNotice.value = '';
+        throw new Error('Provider settings changed. Review the updated disclosure and confirm again.');
+      }
+    }
     let selectedResumeText = resumeText.value;
     if (resumeFile.value !== null) {
       const parsedResume = await parseResumeFile(resumeFile.value);
@@ -225,8 +363,8 @@ async function runAnalysis() {
             <p class="panel-kicker">Analysis mode</p>
             <h3 id="analysis-mode-title">Choose evidence processing</h3>
             <p>
-              Deterministic analysis stays local. AI-enhanced analysis uses your saved provider
-              settings and may send redacted analysis inputs only after confirmation.
+              Deterministic analysis stays local. AI-enhanced analysis uses provider settings
+              applied below and may send redacted analysis inputs only after confirmation.
             </p>
           </div>
           <div class="mode-options" role="radiogroup" aria-labelledby="analysis-mode-title">
@@ -264,6 +402,66 @@ async function runAnalysis() {
               Loading provider configuration...
             </p>
             <template v-else>
+              <div class="provider-selection">
+                <label>
+                  <span>Analysis provider</span>
+                  <select
+                    v-model="providerDraft"
+                    :disabled="running || applyingProviderSettings"
+                    @change="changeProvider"
+                  >
+                    <option value="openai-compatible">OpenAI-compatible</option>
+                    <option value="openai">OpenAI</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Analysis model</span>
+                  <select
+                    v-model="modelDraft"
+                    :disabled="
+                      running ||
+                      applyingProviderSettings ||
+                      loadingModels ||
+                      availableModels.length === 0
+                    "
+                    @change="invalidateProviderConsent"
+                  >
+                    <option v-if="availableModels.length === 0" value="">Load models to select</option>
+                    <option v-for="model in availableModels" :key="model.id" :value="model.id">
+                      {{ model.id }}
+                    </option>
+                  </select>
+                </label>
+                <button
+                  class="export-button"
+                  type="button"
+                  :disabled="running || applyingProviderSettings || loadingModels"
+                  @click="loadModels"
+                >
+                  {{ loadingModels ? 'Loading models...' : 'Load models' }}
+                </button>
+                <button
+                  class="export-button"
+                  type="button"
+                  :disabled="
+                    running ||
+                    applyingProviderSettings ||
+                    loadingModels ||
+                    disclosureLoading ||
+                    modelDraft === '' ||
+                    !providerSelectionDirty
+                  "
+                  @click="applyProviderSettings"
+                >
+                  {{ applyingProviderSettings ? 'Applying...' : 'Apply provider settings' }}
+                </button>
+              </div>
+              <p v-if="providerSettingsError" class="disclosure-warning" role="alert">
+                {{ providerSettingsError }}
+              </p>
+              <p v-if="providerSettingsNotice" class="disclosure-note" role="status">
+                {{ providerSettingsNotice }}
+              </p>
               <p v-if="disclosureError" class="disclosure-warning" role="alert">
                 {{ disclosureError }}
               </p>
@@ -302,7 +500,13 @@ async function runAnalysis() {
               <input
                 v-model="confirmProviderTransmission"
                 type="checkbox"
-                :disabled="running || disclosureLoading || !disclosureConfigured"
+                :disabled="
+                  running ||
+                  disclosureLoading ||
+                  applyingProviderSettings ||
+                  providerSelectionDirty ||
+                  !disclosureConfigured
+                "
               />
               <span>
                 I confirm RoleProof may send redacted analysis inputs to the configured provider.

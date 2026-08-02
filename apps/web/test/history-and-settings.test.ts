@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   LocalAnalyzeResponseSchema,
+  LocalAnalyzeStreamEventSchema,
   LocalHistoryListResponseSchema,
   LocalProviderModelsResponseSchema,
   LocalSettingsResponseSchema,
@@ -406,11 +407,13 @@ describe('local AI analyze API', () => {
     }
   });
 
-  it('rejects AI-enhanced analysis when provider settings are missing', async () => {
+  it('uses the disclosed local defaults for AI analysis on a fresh database', async () => {
     const calls: string[] = [];
-    const { app, database } = await appWithAIProvider((config) =>
-      successfulProvider(config, calls),
-    );
+    const configs: ProviderConfig[] = [];
+    const { app, database } = await appWithAIProvider((config) => {
+      configs.push(config);
+      return successfulProvider(config, calls);
+    });
 
     try {
       const response = await app.inject({
@@ -418,9 +421,63 @@ describe('local AI analyze API', () => {
         url: '/api/analyze',
         payload: aiAnalyzePayload(resumeText, jobText),
       });
+      const body = LocalAnalyzeResponseSchema.parse(JSON.parse(response.body));
 
-      expect(response.statusCode).toBe(400);
-      expect(calls).toEqual([]);
+      expect(response.statusCode).toBe(200);
+      expect(body.schemaVersion).toBe('2.0');
+      expect(configs[0]).toMatchObject({
+        provider: 'openai-compatible',
+        model: 'phi4-mini:latest',
+        destination: 'local',
+        baseUrl: 'http://localhost:11434/v1',
+        structuredOutputMode: 'json-schema',
+      });
+      expect(calls).toEqual([
+        'analyze-requirements',
+        'map-evidence',
+        'suggest-application-changes',
+      ]);
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('uses the disclosed local defaults for streamed AI analysis on a fresh database', async () => {
+    const calls: string[] = [];
+    const configs: ProviderConfig[] = [];
+    const { app, database } = await appWithAIProvider((config) => {
+      configs.push(config);
+      return successfulProvider(config, calls);
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze/stream',
+        payload: aiAnalyzePayload(resumeText, jobText),
+      });
+      const events = response.body
+        .trim()
+        .split('\n')
+        .map((line) => LocalAnalyzeStreamEventSchema.parse(JSON.parse(line)));
+      const result = events.at(-1);
+
+      expect(response.statusCode).toBe(200);
+      expect(result?.kind).toBe('result');
+      if (result?.kind !== 'result') throw new Error('Expected result event');
+      expect(result.response.schemaVersion).toBe('2.0');
+      expect(configs[0]).toMatchObject({
+        provider: 'openai-compatible',
+        model: 'phi4-mini:latest',
+        destination: 'local',
+        baseUrl: 'http://localhost:11434/v1',
+        structuredOutputMode: 'json-schema',
+      });
+      expect(calls).toEqual([
+        'analyze-requirements',
+        'map-evidence',
+        'suggest-application-changes',
+      ]);
     } finally {
       await closeApp(app, database);
     }
