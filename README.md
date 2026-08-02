@@ -6,15 +6,17 @@ inventing experience or presenting a fit score as an interview or hiring probabi
 
 ## Project Status
 
-Phase 4 has started with a local Fastify server foundation behind `roleproof serve`. RoleProof
-accepts plaintext, PDF, or DOCX resumes and plaintext job descriptions, stores profiles and career
-evidence, retains analysis history, supports full-text search, and renders schema-versioned JSON or
-Markdown. Phase 3 optional evidence-constrained AI enhancement remains available through the CLI.
+Phase 4 provides a local Fastify server behind `roleproof serve` and a browser workflow for local
+analysis. RoleProof accepts plaintext, PDF, or DOCX resumes and plaintext job descriptions, stores
+profiles and career evidence, retains analysis history, supports full-text search, and renders
+schema-versioned JSON or Markdown. Optional evidence-constrained AI enhancement is available in the
+CLI and browser only after explicit provider selection and consent.
 
 The browser workflow supports pasted text or TXT/PDF/DOCX résumé uploads with deterministic
-analysis, stored analysis history with search and detail views, and local settings; job URL
-fetching and AI-enhanced browser mode are not implemented. See
-[`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the phased product specification.
+analysis, AI-enhanced analysis with deterministic fallback, provider/redaction settings, stored
+analysis history with search and detail views, and JSON/Markdown downloads. Job URL fetching is not
+implemented. See [`ROLEPROOF_BUILD_SPEC.md`](./docs/ROLEPROOF_BUILD_SPEC.md) for the phased product
+specification.
 
 ## Requirements
 
@@ -84,17 +86,19 @@ pnpm exec roleproof serve
 
 The Phase 4 server starts on `http://localhost:4173` by default and exposes a responsive local
 Vue/Vite workspace with Vue Router, Pinia, a RoleProof proof-mark favicon, privacy-visible status
-copy, and no account, telemetry, or cloud connection requirement. The browser Analyze form calls
-`POST /api/analyze`, which accepts schema-versioned résumé/job text and returns the same
-deterministic `1.0` analysis envelope as the CLI. Results keep hard blockers, matched evidence,
-missing requirements, unsupported claims, safe résumé emphasis, confirmation-required suggestions,
-and interview topics visible with their truth classifications. JSON and Markdown downloads reuse
-the canonical reporters. The Analyze screen accepts TXT résumés up to 1 MB and PDF/DOCX résumés up
-to 10 MB; selecting a file does not transmit it, and explicit analysis sends it only to the local
-server. Analyses persist to the same local database the CLI uses: the History screen lists and
-searches stored reports, opens a stored report on its own page, and deletes a report when asked;
-the Settings screen reads and saves local AI, redaction, and output preferences. AI-enhanced
-browser mode is still in progress.
+copy, and no account, telemetry, or cloud connection requirement. The browser Analyze form streams
+`POST /api/analyze/stream`, which accepts schema-versioned résumé/job text and returns the same
+deterministic `1.0` analysis envelope as the CLI, or an enhanced `2.0` envelope when AI succeeds.
+Provider setup, destination, endpoint, and redaction categories are visible before consent;
+provider failure returns a labeled deterministic fallback. Results keep hard blockers, matched
+evidence, missing requirements, unsupported claims, safe résumé emphasis, confirmation-required
+suggestions, and interview topics visible with their truth classifications. JSON and Markdown
+downloads reuse the canonical reporters. The Analyze screen accepts TXT résumés up to 1 MB and
+PDF/DOCX résumés up to 10 MB; selecting a file does not transmit it, and explicit analysis sends it
+only to the local server. Analyses persist to the same local database the CLI uses: the History
+screen lists and searches stored reports, opens a stored report on its own page, and deletes a report
+when asked; the Settings screen reads and saves local AI, redaction, provider credential status, and
+output preferences.
 
 The landing page is available at `/`; the focused résumé/job comparison workspace is available at
 `/analyze`, stored analyses at `/history`, and local settings at `/settings`.
@@ -123,7 +127,7 @@ reports. Permanent deletion is noninteractive and requires `data purge --yes`.
 ## Workspace
 
 - `apps/cli`: Commander-based command-line shell
-- `apps/web`: local Fastify web server foundation
+- `apps/web`: local Fastify server and Vue/Vite browser workflow
 - `packages/shared`: canonical Zod schemas and inferred TypeScript domain types
 - `packages/core`: deterministic extraction, evidence-aware matching, blockers, scoring, and recommendations
 - `packages/parsers`: bounded plaintext, PDF, and DOCX extraction
@@ -140,12 +144,13 @@ separate from building or testing the local workspace.
 
 ## Privacy
 
-RoleProof keeps resume, job, profile, evidence, and analysis data in local SQLite storage by
-default and has no telemetry. Deterministic analysis performs no provider request. An explicitly
-selected provider sends minimized, redacted summaries to the displayed destination only;
-hosted/custom transmission requires confirmation. `--no-store` does not write analysis content;
-with an explicit `--profile`, it opens the existing database read-only and query-only so SQLite can
-include committed WAL content. See [`docs/privacy.md`](./docs/privacy.md) for transmission details.
+RoleProof keeps resume, job, profile, evidence, and analysis data in local SQLite storage by default
+and has no telemetry. Deterministic analysis performs no provider request. In browser and CLI AI
+mode, an explicitly selected provider sends minimized, redacted summaries to the displayed
+destination only after consent; hosted/custom transmission requires confirmation. `--no-store` does
+not write analysis content; with an explicit `--profile`, it opens the existing database read-only
+and query-only so SQLite can include committed WAL content. See [`docs/privacy.md`](./docs/privacy.md)
+for transmission details.
 
 ## Limitations
 

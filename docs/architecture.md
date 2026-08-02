@@ -2,9 +2,8 @@
 
 ## Phase 4 Boundary
 
-Phase 4 has started from the local server boundary. RoleProof provides local deterministic,
-evidence-aware analysis with SQLite storage, optional AI enhancement, and a Fastify server
-foundation for the local web UI. The implemented dependency direction is:
+Phase 4 provides local deterministic, evidence-aware analysis with SQLite storage, optional
+AI-enhanced guidance, and a Fastify/Vue local web UI. The implemented dependency direction is:
 
 ```text
 apps/cli
@@ -41,22 +40,27 @@ server shuts down.
 Router for local screens, Pinia for client state, a typed local API client, local reusable Vue
 components, and custom CSS token/component layers rather than a visual component framework. It
 exposes local API routes without requiring accounts, telemetry, or cloud dependencies.
-`POST /api/analyze` validates the shared local request schema, parses plaintext through
-`packages/parsers`, delegates matching and scoring to `packages/core`, and returns the canonical
-deterministic analysis envelope. When storage is available, the route also persists the résumé
-document, extracted evidence, job description, and analysis through `packages/storage` using the
-same stable-ID and deduplication rules as the CLI, so repeated identical analyses keep a single
-history row. `GET /api/history` lists stored analyses or restricts them to full-text search
-matches, `GET /api/history/:id` returns a stored analysis envelope, `DELETE /api/history/:id`
-removes an analysis together with any job description only it references, and `GET`/`PUT
-/api/settings` read and merge-update local settings. Routes that require storage answer `503` when
-the server was started without a database. `POST /api/resume/parse` accepts one bounded multipart
-TXT, PDF, or DOCX résumé only after explicit analysis, validates upload metadata, and delegates
-extraction and limits to `packages/parsers` without persisting the file. Browser downloads pass the validated
-result to `packages/reporters`; the UI does not duplicate JSON or Markdown rendering. Playwright
-exercises the built local server with fictional inputs and no hosted dependency, including proof
-that file selection alone sends no parse request. UI workflow screens must delegate to the same
-core, parser, reporter, storage, and provider packages used by the CLI.
+`POST /api/analyze` and `POST /api/analyze/stream` validate the shared local request schema, parse
+plaintext through `packages/parsers`, delegate matching and scoring to `packages/core`, and return
+the canonical deterministic analysis envelope. In AI-enhanced mode, the server constructs provider
+inputs from the stored deterministic baseline and returns either an enhanced `2.0` sidecar envelope
+or the unchanged deterministic fallback; provider failures are recorded as sanitized provider-call
+metadata when storage is available. When storage is available, analyze routes also persist the
+résumé document, extracted evidence, job description, and analysis through `packages/storage` using
+stable IDs and source-aware analysis identity. Identical pasted analyses reuse one history row;
+uploaded résumé provenance is preserved in document metadata and source-specific analysis identity.
+`GET /api/history` lists stored analyses or restricts them to full-text search matches,
+`GET /api/history/:id` returns a deterministic or enhanced stored analysis envelope,
+`DELETE /api/history/:id` removes an analysis together with any job description only it references,
+and `GET`/`PUT /api/settings` read and merge-update local settings. Routes that require storage
+answer `503` when the server was started without a database. `POST /api/resume/parse` accepts one
+bounded multipart TXT, PDF, or DOCX résumé only after explicit analysis, validates upload metadata,
+and delegates extraction and limits to `packages/parsers` without persisting the file. Browser
+downloads pass the validated result to `packages/reporters`; the UI does not duplicate JSON or
+Markdown rendering. Playwright exercises the built local server with fictional inputs and no hosted
+dependency, including proof that file selection alone sends no parse request, fallback labels remain
+visible, and JSON/Markdown downloads remain schema-compatible. UI workflow screens must delegate to
+the same core, parser, reporter, storage, and provider packages used by the CLI.
 
 ### Shared
 
@@ -139,6 +143,5 @@ matches, or blockers.
 
 ## Deferred Architecture
 
-The complete web UI workflow remains in Phase 4. URL analysis begins in Phase 5, and automation
-integrations begin in Phase 6. None is required to use the deterministic CLI, local storage, or
-optional provider enhancement.
+Job URL analysis begins in Phase 5, and automation integrations begin in Phase 6. None is required
+to use the deterministic CLI, local web UI, local storage, or optional provider enhancement.

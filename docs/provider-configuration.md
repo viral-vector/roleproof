@@ -11,6 +11,13 @@ key-store backends are added. The Analyze screen defaults to deterministic mode.
 AI-enhanced analysis requires checking the provider-transmission confirmation before any redacted
 analysis inputs are sent.
 
+In the browser, AI-enhanced analysis uses the same provider layer and schemas as the CLI. The
+Analyze screen shows the current provider, model, destination, endpoint, and redaction categories
+before consent. Loading models calls only the provider metadata endpoint; it does not send résumé or
+job content. Applying provider changes invalidates prior consent. If enhancement is unavailable,
+malformed, over budget, or missing credentials, the browser returns the deterministic fallback and
+labels it as such.
+
 ## OpenAI
 
 For local web use on Windows, enter the API key in Settings so RoleProof stores it in Windows
@@ -97,7 +104,9 @@ Email, phone, and common address redaction are enabled by default. Optional cont
 - repeatable `--redact-term <text>`
 
 Pattern redaction is best-effort. Add explicit terms for sensitive names or phrases that must not be
-sent. The transmission preview is written to stderr before any career-data request.
+sent. The CLI writes the transmission preview to stderr before any career-data request; the browser
+shows the provider destination and redaction summary in the Analyze disclosure panel before the
+confirmation checkbox can be used.
 
 Provider limits include `--provider-timeout-ms`, `--max-input-chars`, `--max-output-tokens`, and
 `--max-total-tokens`. Cost enforcement requires all three of `--max-cost-usd`,
@@ -108,7 +117,8 @@ Cost limits are enforced from provider-reported usage after each response and st
 are not prepaid spending guarantees: the first completed request, or the request that crosses the
 limit, may already have been billed. `--max-output-tokens` bounds requested output before transport.
 
-Provider failure returns the unchanged deterministic report with exit code `4`. No partial AI
-enhancement is published. Use `roleproof providers list` to inspect supported adapter types,
-`roleproof providers models` to list endpoint model IDs, and `roleproof providers test` to perform a
-health check. Model-list and health-check requests do not send résumé or job content.
+Provider failure returns the unchanged deterministic report with exit code `4` in the CLI and a
+labeled deterministic fallback in the browser. No partial AI enhancement is published. Use
+`roleproof providers list` to inspect supported adapter types, `roleproof providers models` to list
+endpoint model IDs, and `roleproof providers test` to perform a health check. Model-list and
+health-check requests do not send résumé or job content.

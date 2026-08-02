@@ -8,6 +8,7 @@ import { getSettings } from '../api/client.js';
 
 const props = defineProps<{
   response: LocalAnalyzeResponse;
+  submittedMode?: 'deterministic' | 'ai-enhanced';
 }>();
 
 const defaultExportFormat = ref<'json' | 'markdown' | null>(null);
@@ -42,9 +43,12 @@ const partialMatches = computed(
       (match) => match.classification === 'partially-related',
     ) ?? [],
 );
-const resultModeLabel = computed(() =>
-  props.response.schemaVersion === '2.0' ? 'AI-enhanced guidance' : 'Deterministic fallback',
-);
+const resultModeLabel = computed(() => {
+  if (props.response.schemaVersion === '2.0') return 'AI-enhanced guidance';
+  return props.submittedMode === 'ai-enhanced'
+    ? 'Deterministic fallback'
+    : 'Deterministic analysis';
+});
 
 const aiEnhancement = computed(() =>
   props.response.schemaVersion === '2.0' ? props.response.aiEnhancement : null,
@@ -225,8 +229,8 @@ function saveAnalysis(format: 'json' | 'markdown') {
             :key="`${execution.operation}-${execution.requestId ?? 'x'}`"
           >
             <span>
-              {{ formatLabel(execution.operation) }} &middot;
-              {{ execution.provider }} / {{ execution.model }}
+              {{ formatLabel(execution.operation) }} &middot; {{ execution.provider }} /
+              {{ execution.model }}
             </span>
             <small>
               {{ formatLabel(execution.destination) }} &middot;

@@ -7,9 +7,11 @@ import {
   LocalAnalyzeErrorEventSchema,
   LocalAnalyzeResponseSchema,
   LocalHistoryListResponseSchema,
+  LocalHistoryDetailResponseSchema,
   LocalHistoryQuerySchema,
   LocalResumeParseErrorSchema,
   LocalResumeParseResponseSchema,
+  LocalResumeSourceSchema,
   LocalResumeUploadMetadataSchema,
   LocalProviderCredentialDeleteResponseSchema,
   LocalProviderModelsQuerySchema,
@@ -262,14 +264,80 @@ describe('Phase 4 local API schemas', () => {
         schemaVersion: '1.0',
         text: 'Fictional TypeScript experience.',
         format: 'docx',
+        confidence: 0.5,
         warnings: [],
       }),
     ).toEqual({
       schemaVersion: '1.0',
       text: 'Fictional TypeScript experience.',
       format: 'docx',
+      confidence: 0.5,
       warnings: [],
     });
+    expect(
+      LocalResumeParseResponseSchema.parse({
+        schemaVersion: '1.0',
+        text: 'Legacy fictional resume text.',
+        format: 'plaintext',
+        warnings: [],
+      }),
+    ).toEqual({
+      schemaVersion: '1.0',
+      text: 'Legacy fictional resume text.',
+      format: 'plaintext',
+      warnings: [],
+    });
+  });
+
+  it('validates resume source provenance sent with analyze requests', () => {
+    const source = {
+      format: 'docx',
+      fileName: 'fictional resume.docx',
+      contentSha256: 'a'.repeat(64),
+      confidence: 0.5,
+      warnings: [{ code: 'docx-low-text-content', message: 'Fictional degraded extraction.' }],
+    } as const;
+
+    const parsed = LocalResumeSourceSchema.parse(source);
+    expect(parsed).toEqual(source);
+    expect(
+      LocalAnalyzeRequestSchema.safeParse({
+        schemaVersion: '1.0',
+        resumeText: 'Fictional resume text.',
+        jobText: 'Fictional job text.',
+        resumeSource: source,
+      }).success,
+    ).toBe(true);
+    expect(
+      LocalAnalyzeRequestSchema.safeParse({
+        schemaVersion: '1.0',
+        mode: 'ai-enhanced',
+        confirmProviderTransmission: true,
+        resumeText: 'Fictional resume text.',
+        jobText: 'Fictional job text.',
+        resumeSource: source,
+      }).success,
+    ).toBe(true);
+    expect(
+      LocalResumeSourceSchema.safeParse({ ...source, fileName: '../fictional.docx' }).success,
+    ).toBe(false);
+    expect(
+      LocalResumeSourceSchema.safeParse({ ...source, fileName: 'fictional resume.pdf' }).success,
+    ).toBe(false);
+    expect(
+      LocalResumeSourceSchema.safeParse({
+        ...source,
+        contentSha256: 'not-a-hash',
+      }).success,
+    ).toBe(false);
+    expect(LocalResumeSourceSchema.safeParse({ ...source, confidence: 2 }).success).toBe(false);
+    expect(
+      LocalResumeSourceSchema.safeParse({
+        ...source,
+        warnings: [{ code: 'made-up', message: 'x' }],
+      }).success,
+    ).toBe(false);
+    expect(LocalResumeSourceSchema.safeParse({ format: 'plaintext' }).success).toBe(false);
   });
 
   it('validates provider credential status without exposing API keys', () => {
@@ -386,6 +454,73 @@ describe('Phase 4 local API schemas', () => {
         history: [response.history[0]],
         extra: true,
       }).success,
+    ).toBe(false);
+  });
+
+  it('validates local history detail responses for deterministic and enhanced envelopes', () => {
+    const analysis = {
+      schemaVersion: '1.0',
+      id: 'analysis-local-detail',
+      overallScore: 0,
+      recommendation: 'manual-review',
+      confidence: 0,
+      hardBlockers: [],
+      matchedRequirements: [],
+      missingRequirements: [],
+      unsupportedClaims: [],
+      suggestedEmphasis: [],
+      suggestedAdditions: [],
+      interviewTopics: [],
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      metadata: { mode: 'deterministic', engineVersion: '0.3.0' },
+    } as const;
+    const execution = {
+      operation: 'analyze-requirements',
+      provider: 'openai',
+      model: 'fictional-model',
+      destination: 'hosted',
+      manifest: {
+        provider: 'openai',
+        model: 'fictional-model',
+        destination: 'hosted',
+        endpointOrigin: 'https://api.openai.com',
+        dataCategories: ['baseline-classification'],
+        redactionApplied: true,
+        redactionSummary: { categories: [], replacementCount: 0, inputChars: 1, outputChars: 1 },
+      },
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, costMicroUsd: 1 },
+      requestId: 'request-1',
+      errorCode: null,
+    } as const;
+    const enhanced = {
+      schemaVersion: '2.0',
+      analysis,
+      aiEnhancement: {
+        schemaVersion: '1.0',
+        baselineAnalysisId: analysis.id,
+        requirementAnalysis: { requirements: [] },
+        evidenceMapping: { mappings: [] },
+        applicationSuggestions: {
+          suggestedEmphasis: [],
+          suggestedAdditions: [],
+          interviewTopics: [],
+          coverLetterAngles: [],
+        },
+        providerExecutions: [
+          { ...execution, operation: 'analyze-requirements' },
+          { ...execution, operation: 'map-evidence' },
+          { ...execution, operation: 'suggest-application-changes' },
+        ],
+      },
+    } as const;
+
+    expect(LocalHistoryDetailResponseSchema.parse({ schemaVersion: '1.0', analysis })).toEqual({
+      schemaVersion: '1.0',
+      analysis,
+    });
+    expect(LocalHistoryDetailResponseSchema.parse(enhanced)).toEqual(enhanced);
+    expect(
+      LocalHistoryDetailResponseSchema.safeParse({ ...enhanced, schemaVersion: '3.0' }).success,
     ).toBe(false);
   });
 

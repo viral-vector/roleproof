@@ -268,10 +268,18 @@ describe('local history API', () => {
 
       const byCompany = await app.inject({ method: 'GET', url: '/api/history?query=fictional' });
       const companyBody = LocalHistoryListResponseSchema.parse(JSON.parse(byCompany.body));
-      expect(companyBody.history.map((item: LocalHistoryItem) => item.jobId)).toEqual(
-        expect.arrayContaining(companyBody.history.map((item: LocalHistoryItem) => item.jobId)),
+      expect(companyBody.history).toHaveLength(2);
+      const companyJobIds = companyBody.history.map((item: LocalHistoryItem) => item.jobId);
+      expect(new Set(companyJobIds).size).toBe(2);
+      expect(companyJobIds).toContain(skillBody.history[0]?.jobId);
+      const byTitle = await app.inject({ method: 'GET', url: '/api/history?query=backend' });
+      const titleBody = LocalHistoryListResponseSchema.parse(JSON.parse(byTitle.body));
+      const backendJobId = titleBody.history.map((item: LocalHistoryItem) => item.jobId);
+      expect(backendJobId).toHaveLength(1);
+      expect(backendJobId[0]).not.toBe(skillBody.history[0]?.jobId);
+      expect(companyJobIds).toEqual(
+        expect.arrayContaining([...(backendJobId as string[]), skillBody.history[0]!.jobId]),
       );
-      expect(companyBody.history.length).toBeGreaterThanOrEqual(2);
     } finally {
       await closeApp(app, database);
     }
@@ -566,6 +574,326 @@ describe('local AI analyze API', () => {
       expect(callsStored).toHaveLength(1);
       expect(callsStored[0]?.status).toBe('failed');
       expect(callsStored[0]?.errorCode).toBe('timeout');
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('falls back to the unchanged deterministic envelope when provider construction fails', async () => {
+    const { app, database, repositories } = await appWithAIProvider(() => {
+      throw new ProviderError('auth', 'health-check');
+    });
+
+    try {
+      await configureLocalProvider(repositories);
+      const baseline = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: analyzePayload(resumeText, jobText),
+      });
+      const baselineId = (JSON.parse(baseline.body) as { analysis: { id: string } }).analysis.id;
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: aiAnalyzePayload(resumeText, jobText),
+      });
+      const body = LocalAnalyzeResponseSchema.parse(JSON.parse(response.body));
+      const callsStored = await repositories.providerCalls.list(baselineId);
+
+      expect(response.statusCode).toBe(200);
+      expect(body.schemaVersion).toBe('1.0');
+      expect(body.analysis.id).toBe(baselineId);
+      expect(callsStored).toHaveLength(1);
+      expect(callsStored[0]).toMatchObject({
+        status: 'failed',
+        errorCode: 'auth',
+        operation: 'health-check',
+        endpointOrigin: null,
+      });
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('falls back to the deterministic envelope when hosted credentials are missing', async () => {
+    const { app, database } = await appWithStorage();
+
+    try {
+      await app.inject({
+        method: 'PUT',
+        url: '/api/settings',
+        payload: {
+          provider: 'openai',
+          model: 'gpt-4.1-mini',
+          destination: 'hosted',
+          structuredOutputMode: 'json-schema',
+        },
+      });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: aiAnalyzePayload(resumeText, jobText),
+      });
+      const body = LocalAnalyzeResponseSchema.parse(JSON.parse(response.body));
+
+      expect(response.statusCode).toBe(200);
+      expect(body.schemaVersion).toBe('1.0');
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('streams the deterministic envelope instead of an error when provider construction fails', async () => {
+    const { app, database, repositories } = await appWithAIProvider(() => {
+      throw new ProviderError('configuration', 'health-check');
+    });
+
+    try {
+      await configureLocalProvider(repositories);
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze/stream',
+        payload: aiAnalyzePayload(resumeText, jobText),
+      });
+      const events = response.body
+        .trim()
+        .split('\n')
+        .map((line) => LocalAnalyzeStreamEventSchema.parse(JSON.parse(line)));
+      const result = events.at(-1);
+
+      expect(response.statusCode).toBe(200);
+      expect(events.some((event) => event.kind === 'error')).toBe(false);
+      expect(result?.kind).toBe('result');
+      if (result?.kind !== 'result') throw new Error('Expected result event');
+      expect(result.response.schemaVersion).toBe('1.0');
+      const callsStored = await repositories.providerCalls.list(result.response.analysis.id);
+      expect(callsStored).toHaveLength(1);
+      expect(callsStored[0]).toMatchObject({ status: 'failed', errorCode: 'configuration' });
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('returns the deterministic baseline when the provider configuration changes for a stored analysis', async () => {
+    const calls: string[] = [];
+    const { app, database, repositories } = await appWithAIProvider((config) =>
+      successfulProvider(config, calls),
+    );
+
+    try {
+      await configureLocalProvider(repositories);
+      const first = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: aiAnalyzePayload(resumeText, jobText),
+      });
+      const firstBody = LocalAnalyzeResponseSchema.parse(JSON.parse(first.body));
+      expect(firstBody.schemaVersion).toBe('2.0');
+
+      await app.inject({
+        method: 'PUT',
+        url: '/api/settings',
+        payload: { model: 'fictional-model-2' },
+      });
+      const second = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: aiAnalyzePayload(resumeText, jobText),
+      });
+      const secondBody = LocalAnalyzeResponseSchema.parse(JSON.parse(second.body));
+      const callsStored = await repositories.providerCalls.list(firstBody.analysis.id);
+
+      expect(second.statusCode).toBe(200);
+      expect(secondBody.schemaVersion).toBe('1.0');
+      expect(secondBody.analysis.id).toBe(firstBody.analysis.id);
+      expect(callsStored.filter((call) => call.status === 'failed')).toHaveLength(1);
+      expect(callsStored.at(-1)?.errorCode).toBe('configuration');
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('preserves uploaded resume provenance when persisting analysis', async () => {
+    const { app, database, repositories } = await appWithStorage();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze',
+        payload: {
+          schemaVersion: '1.0',
+          mode: 'deterministic',
+          resumeText,
+          jobText,
+          resumeSource: {
+            format: 'docx',
+            fileName: 'fictional resume.docx',
+            contentSha256: 'b'.repeat(64),
+            confidence: 0.5,
+            warnings: [
+              { code: 'docx-low-text-content', message: 'Fictional degraded extraction.' },
+            ],
+          },
+        },
+      });
+      const profile = await repositories.profiles.ensureDefault();
+      const documents = await repositories.documents.listByProfile(profile.id);
+      const resumeDocument = documents.find((document) => document.kind === 'resume');
+
+      expect(response.statusCode).toBe(200);
+      expect(resumeDocument).toMatchObject({
+        format: 'docx',
+        originalName: 'fictional resume.docx',
+        contentSha256: 'b'.repeat(64),
+        confidence: 0.5,
+      });
+      expect(resumeDocument?.parsedContentSha256).toBeDefined();
+      expect(resumeDocument?.warnings).toEqual([
+        { code: 'docx-low-text-content', message: 'Fictional degraded extraction.' },
+      ]);
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it('preserves uploaded resume provenance on the streamed analyze path', async () => {
+    const { app, database, repositories } = await appWithStorage();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/analyze/stream',
+        payload: {
+          schemaVersion: '1.0',
+          mode: 'deterministic',
+          resumeText,
+          jobText,
+          resumeSource: {
+            format: 'pdf',
+            fileName: 'fictional resume.pdf',
+            contentSha256: 'c'.repeat(64),
+            confidence: 0.5,
+            warnings: [{ code: 'pdf-low-text-content', message: 'Fictional low text content.' }],
+          },
+        },
+      });
+      const events = response.body
+        .trim()
+        .split('\n')
+        .map((line) => LocalAnalyzeStreamEventSchema.parse(JSON.parse(line)));
+      const profile = await repositories.profiles.ensureDefault();
+      const documents = await repositories.documents.listByProfile(profile.id);
+      const resumeDocument = documents.find((document) => document.kind === 'resume');
+
+      expect(response.statusCode).toBe(200);
+      expect(events.at(-1)?.kind).toBe('result');
+      expect(resumeDocument).toMatchObject({
+        format: 'pdf',
+        originalName: 'fictional resume.pdf',
+        contentSha256: 'c'.repeat(64),
+        confidence: 0.5,
+      });
+      expect(resumeDocument?.warnings).toEqual([
+        { code: 'pdf-low-text-content', message: 'Fictional low text content.' },
+      ]);
+    } finally {
+      await closeApp(app, database);
+    }
+  });
+
+  it.each([
+    { name: 'uploaded first', sourceFirst: true, expectedConfidence: [0.5, 1] },
+    { name: 'pasted first', sourceFirst: false, expectedConfidence: [1, 0.5] },
+  ])(
+    'uses current parsing metadata for duplicate resume text when $name',
+    async ({ sourceFirst, expectedConfidence }) => {
+      const { app, database } = await appWithStorage();
+      const source = {
+        format: 'pdf' as const,
+        fileName: 'fictional resume.pdf',
+        contentSha256: 'd'.repeat(64),
+        confidence: 0.5,
+        warnings: [{ code: 'pdf-low-text-content' as const, message: 'Fictional low text.' }],
+      };
+      const analyze = (includeSource: boolean) =>
+        app.inject({
+          method: 'POST',
+          url: '/api/analyze',
+          payload: {
+            schemaVersion: '1.0',
+            mode: 'deterministic',
+            resumeText,
+            jobText,
+            ...(includeSource ? { resumeSource: source } : {}),
+          },
+        });
+
+      try {
+        const first = LocalAnalyzeResponseSchema.parse(
+          JSON.parse((await analyze(sourceFirst)).body),
+        );
+        const second = LocalAnalyzeResponseSchema.parse(
+          JSON.parse((await analyze(!sourceFirst)).body),
+        );
+
+        expect([
+          first.analysis.metadata.parsing?.resumeConfidence,
+          second.analysis.metadata.parsing?.resumeConfidence,
+        ]).toEqual(expectedConfidence);
+        expect(first.analysis.id).not.toBe(second.analysis.id);
+        const uploaded = sourceFirst ? first : second;
+        const pasted = sourceFirst ? second : first;
+        expect(uploaded.analysis.metadata.parsing?.warnings).toContain('Fictional low text.');
+        expect(pasted.analysis.metadata.parsing?.warnings).not.toContain('Fictional low text.');
+      } finally {
+        await closeApp(app, database);
+      }
+    },
+  );
+
+  it('uses uploaded source identity for duplicate resume text even when parsing is clean', async () => {
+    const { app, database } = await appWithStorage();
+    const cleanSource = {
+      format: 'docx' as const,
+      fileName: 'fictional resume.docx',
+      contentSha256: 'e'.repeat(64),
+      confidence: 1,
+      warnings: [],
+    };
+
+    try {
+      const pasted = LocalAnalyzeResponseSchema.parse(
+        JSON.parse(
+          (
+            await app.inject({
+              method: 'POST',
+              url: '/api/analyze',
+              payload: analyzePayload(resumeText, jobText),
+            })
+          ).body,
+        ),
+      );
+      const uploaded = LocalAnalyzeResponseSchema.parse(
+        JSON.parse(
+          (
+            await app.inject({
+              method: 'POST',
+              url: '/api/analyze',
+              payload: {
+                schemaVersion: '1.0',
+                mode: 'deterministic',
+                resumeText,
+                jobText,
+                resumeSource: cleanSource,
+              },
+            })
+          ).body,
+        ),
+      );
+
+      expect(uploaded.analysis.id).not.toBe(pasted.analysis.id);
+      expect(uploaded.analysis.metadata.parsing?.resumeConfidence).toBe(1);
     } finally {
       await closeApp(app, database);
     }

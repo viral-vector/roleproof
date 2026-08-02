@@ -58,7 +58,7 @@ describe('client API contract', () => {
     expect(calls).toEqual([['/api/health', undefined]]);
   });
 
-  it('posts deterministic analyze requests and validates the analysis envelope', async () => {
+  it('posts deterministic analyze requests with resume provenance', async () => {
     const { calls, fetchImpl } = fetchStub(
       jsonResponse({
         schemaVersion: '1.0',
@@ -82,7 +82,17 @@ describe('client API contract', () => {
     );
 
     const result = await analyzeLocal(
-      { resumeText: 'Fictional resume text', jobText: 'Fictional job text' },
+      {
+        resumeText: 'Fictional resume text',
+        jobText: 'Fictional job text',
+        resumeSource: {
+          format: 'docx',
+          fileName: 'fictional resume.docx',
+          contentSha256: 'a'.repeat(64),
+          confidence: 0.5,
+          warnings: [{ code: 'docx-low-text-content', message: 'Fictional low text content.' }],
+        },
+      },
       fetchImpl,
     );
 
@@ -98,6 +108,13 @@ describe('client API contract', () => {
       mode: 'deterministic',
       resumeText: 'Fictional resume text',
       jobText: 'Fictional job text',
+      resumeSource: {
+        format: 'docx',
+        fileName: 'fictional resume.docx',
+        contentSha256: 'a'.repeat(64),
+        confidence: 0.5,
+        warnings: [{ code: 'docx-low-text-content', message: 'Fictional low text content.' }],
+      },
     });
   });
 
@@ -228,6 +245,7 @@ describe('client API contract', () => {
         schemaVersion: '1.0',
         text: 'Fictional TypeScript experience.',
         format: 'plaintext',
+        confidence: 1,
         warnings: [],
       }),
     );
@@ -235,7 +253,11 @@ describe('client API contract', () => {
       type: 'text/plain',
     });
 
-    await expect(parseResumeFile(file, fetchImpl)).resolves.toMatchObject({ format: 'plaintext' });
+    const parsed = await parseResumeFile(file, fetchImpl);
+    expect(parsed.format).toBe('plaintext');
+    expect(parsed.fileName).toBe('fictional resume.txt');
+    expect(parsed.contentSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(parsed.contentSha256).not.toBe('content-hash-placeholder');
     expect(calls).toHaveLength(1);
     const [url, init] = calls[0]!;
     expect(url).toBe('/api/resume/parse');
@@ -250,6 +272,7 @@ describe('client API contract', () => {
         schemaVersion: '1.0',
         text: 'Fictional TypeScript experience.',
         format: 'docx',
+        confidence: 0.5,
         warnings: [],
       }),
     );
@@ -257,7 +280,10 @@ describe('client API contract', () => {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     });
 
-    await expect(parseResumeFile(file, fetchImpl)).resolves.toMatchObject({ format: 'docx' });
+    const parsed = await parseResumeFile(file, fetchImpl);
+    expect(parsed.format).toBe('docx');
+    expect(parsed.confidence).toBe(0.5);
+    expect(parsed.contentSha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(calls).toHaveLength(1);
     const [url, init] = calls[0]!;
     expect(url).toBe('/api/resume/parse');

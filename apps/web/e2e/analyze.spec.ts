@@ -45,6 +45,7 @@ test('runs a local deterministic analysis and downloads validated results', asyn
   await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
   await expect(page.getByText('Analysis progress')).toBeVisible();
   expect(resumeParseRequests).toBe(1);
+  await expect(page.getByText('Deterministic analysis', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Eligibility blockers' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Strong matches' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Partial matches' })).toBeVisible();
@@ -62,6 +63,33 @@ test('runs a local deterministic analysis and downloads validated results', asyn
   await page.getByRole('button', { name: 'Download Markdown' }).click();
   const markdownDownload = await markdownDownloadPromise;
   expect(markdownDownload.suggestedFilename()).toBe('roleproof-analysis.md');
+  const markdownPath = await markdownDownload.path();
+  const markdown = await readFile(markdownPath, 'utf8');
+  expect(markdown).toContain('# RoleProof Analysis');
+  expect(markdown).toContain('## Recommendation');
+  expect(markdown).toContain('## Strong Matches');
+  expect(markdown).toContain('## Unsupported or Risky Claims');
+  expect(markdown).toContain('## Analysis Metadata');
+});
+
+test('runs the full analysis flow with keyboard-only navigation', async ({ page }) => {
+  await page.goto('/analyze');
+
+  await page.getByLabel('Resume file').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByLabel('Resume text')).toBeFocused();
+  await page.keyboard.type(resumeText);
+  await page.keyboard.press('Tab');
+  await expect(page.getByLabel('Job description')).toBeFocused();
+  await page.keyboard.type(jobText);
+  await page.keyboard.press('Tab');
+  await expect(page.getByLabel('Deterministic baseline')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Analyze role fit' })).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
+  await expect(page.getByText('Deterministic analysis', { exact: true })).toBeVisible();
 });
 
 test('uploads a fictional DOCX resume and produces deterministic results', async ({ page }) => {
@@ -83,6 +111,40 @@ test('uploads a fictional DOCX resume and produces deterministic results', async
   await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
   expect(resumeParseRequests).toBe(1);
   await expect(page.getByRole('heading', { name: 'Strong matches' })).toBeVisible();
+});
+
+test('omits resume provenance when a legacy parser response has no confidence', async ({
+  page,
+}) => {
+  let submittedBody: Record<string, unknown> | undefined;
+  await page.route('**/api/resume/parse', async (route) => {
+    await route.fulfill({
+      json: {
+        schemaVersion: '1.0',
+        text: resumeText,
+        format: 'plaintext',
+        warnings: [],
+      },
+    });
+  });
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/analyze/stream')) {
+      submittedBody = request.postDataJSON() as Record<string, unknown>;
+    }
+  });
+
+  await page.goto('/analyze');
+  await page.getByLabel('Resume file').setInputFiles({
+    name: 'fictional legacy resume.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from(resumeText),
+  });
+  await page.getByLabel('Job description').fill(jobText);
+  await page.getByRole('button', { name: 'Analyze role fit' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
+  expect(submittedBody).toBeDefined();
+  expect(submittedBody).not.toHaveProperty('resumeSource');
 });
 
 test('downloads prefer the saved default export format', async ({ page }) => {
@@ -190,6 +252,9 @@ test('discloses the configured AI provider, destination, endpoint, and redaction
   await expect(disclosure).toContainText('OpenAI-compatible');
   await expect(disclosure).toContainText('fictional-model');
   await expect(disclosure).toContainText('http://localhost:11434/v1');
+  await expect(disclosure).toContainText('Email addresses');
+  await expect(disclosure).toContainText('Phone numbers');
+  await expect(disclosure).toContainText('Addresses');
   await expect(disclosure).toContainText('Employer names');
   await expect(disclosure).toContainText('Project Hermes');
 
@@ -222,7 +287,9 @@ test('discloses the configured AI provider, destination, endpoint, and redaction
   expect(reset.ok()).toBeTruthy();
 });
 
-test('persists Analyze provider selections before enabling transmission consent', async ({ page }) => {
+test('persists Analyze provider selections before enabling transmission consent', async ({
+  page,
+}) => {
   await page.route('**/api/provider-models?**', async (route) => {
     const provider = new URL(route.request().url()).searchParams.get('provider');
     await route.fulfill({
@@ -354,6 +421,107 @@ test('invalidates consent when provider settings change before submission', asyn
   expect(reset.ok()).toBeTruthy();
 });
 
+test('shows the deterministic fallback and sends resume provenance in AI mode', async ({
+  page,
+}) => {
+  const save = await page.request.put('/api/settings', {
+    data: {
+      provider: 'openai-compatible',
+      model: 'fictional-model',
+      destination: 'local',
+      baseUrl: 'http://localhost:11434/v1',
+      structuredOutputMode: 'json-schema',
+    },
+  });
+  expect(save.ok()).toBeTruthy();
+
+  const envelope = AnalysisEnvelopeSchema.parse({
+    schemaVersion: '1.0',
+    analysis: {
+      schemaVersion: '1.0',
+      id: 'analysis-fictional-fallback',
+      overallScore: 55,
+      recommendation: 'stretch',
+      confidence: 0.6,
+      hardBlockers: [],
+      matchedRequirements: [],
+      missingRequirements: [],
+      unsupportedClaims: [],
+      suggestedEmphasis: [],
+      suggestedAdditions: [],
+      interviewTopics: [],
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      metadata: { mode: 'deterministic', engineVersion: '0.4.0' },
+    },
+  });
+  let submittedBody: Record<string, unknown> = {};
+  await page.route('**/api/analyze/stream', async (route) => {
+    submittedBody = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson; charset=utf-8' },
+      body:
+        [
+          JSON.stringify({
+            kind: 'progress',
+            stage: 'complete',
+            completed: 4,
+            total: 4,
+            message: 'Analysis complete.',
+          }),
+          JSON.stringify({ kind: 'result', response: envelope }),
+        ].join('\n') + '\n',
+    });
+  });
+
+  await page.goto('/analyze');
+  await page.getByLabel('Resume file').setInputFiles({
+    name: 'fictional resume.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    buffer: Buffer.from(createDocx(resumeText.split('\n'))),
+  });
+  await page.getByLabel('Job description').fill(jobText);
+  await page.getByLabel('AI-enhanced analysis').check();
+  await page.getByLabel(/I confirm RoleProof may send redacted analysis inputs/u).check();
+  await page.getByRole('button', { name: 'Analyze role fit' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
+  await expect(page.getByText('Deterministic fallback', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      'AI enhancement was unavailable, so RoleProof returned the deterministic fallback.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByText('Validated AI Output')).toHaveCount(0);
+  await page.getByLabel('Deterministic baseline').check();
+  await expect(
+    page.getByText(
+      'AI enhancement was unavailable, so RoleProof returned the deterministic fallback.',
+    ),
+  ).toBeVisible();
+
+  const source = submittedBody.resumeSource as Record<string, unknown>;
+  expect(submittedBody.mode).toBe('ai-enhanced');
+  expect(submittedBody.confirmProviderTransmission).toBe(true);
+  expect(source).toMatchObject({
+    format: 'docx',
+    fileName: 'fictional resume.docx',
+    confidence: 1,
+  });
+  expect(source?.contentSha256).toMatch(/^[a-f0-9]{64}$/u);
+
+  const reset = await page.request.put('/api/settings', {
+    data: {
+      provider: null,
+      model: null,
+      destination: null,
+      baseUrl: null,
+      structuredOutputMode: null,
+    },
+  });
+  expect(reset.ok()).toBeTruthy();
+});
+
 test.describe('mobile layout', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
@@ -466,16 +634,17 @@ test('renders AI enhancement sections and keeps them in exports', async ({ page 
     await route.fulfill({
       status: 200,
       headers: { 'content-type': 'application/x-ndjson; charset=utf-8' },
-      body: [
-        JSON.stringify({
-          kind: 'progress',
-          stage: 'complete',
-          completed: 4,
-          total: 4,
-          message: 'Analysis complete.',
-        }),
-        JSON.stringify({ kind: 'result', response: envelope }),
-      ].join('\n') + '\n',
+      body:
+        [
+          JSON.stringify({
+            kind: 'progress',
+            stage: 'complete',
+            completed: 4,
+            total: 4,
+            message: 'Analysis complete.',
+          }),
+          JSON.stringify({ kind: 'result', response: envelope }),
+        ].join('\n') + '\n',
     });
   });
 

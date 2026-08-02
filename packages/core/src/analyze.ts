@@ -24,9 +24,10 @@ import { recommendFromScore, scoreMatches } from './scoring.js';
 
 export interface DeterministicAnalysisOptions {
   generatedAt?: string;
+  analysisIdentityKey?: string;
 }
 
-function stableAnalysisId(input: DeterministicAnalysisInput): string {
+function stableAnalysisId(input: DeterministicAnalysisInput, analysisIdentityKey?: string): string {
   const canonicalContext = {
     ...input.candidateContext,
     preferredLocations: [...input.candidateContext.preferredLocations].sort(),
@@ -35,19 +36,25 @@ function stableAnalysisId(input: DeterministicAnalysisInput): string {
     education: [...input.candidateContext.education].sort(),
     certifications: [...input.candidateContext.certifications].sort(),
   };
-  const hash = createHash('sha256')
-    .update(`${input.resume.id}\0${input.job.id}\0${JSON.stringify(canonicalContext)}`, 'utf8')
-    .digest('hex');
-  return `analysis-${hash.slice(0, 24)}`;
+  const hash = createHash('sha256').update(
+    `${input.resume.id}\0${input.job.id}\0${JSON.stringify(canonicalContext)}`,
+    'utf8',
+  );
+  if (analysisIdentityKey !== undefined) hash.update(`\0${analysisIdentityKey}`, 'utf8');
+  const digest = hash.digest('hex');
+  return `analysis-${digest.slice(0, 24)}`;
 }
 
-function stableEvidenceAwareAnalysisId(input: EvidenceAwareDeterministicAnalysisInput): string {
+function stableEvidenceAwareAnalysisId(
+  input: EvidenceAwareDeterministicAnalysisInput,
+  analysisIdentityKey?: string,
+): string {
   const canonicalEvidence = input.evidence
     .map((evidence) => JSON.stringify(evidence))
     .sort(compareStableStrings);
   const hash = createHash('sha256')
     .update(
-      `${stableAnalysisId(input)}\0${input.profileId ?? ''}\0${canonicalEvidence.join('\0')}`,
+      `${stableAnalysisId(input, analysisIdentityKey)}\0${input.profileId ?? ''}\0${canonicalEvidence.join('\0')}`,
       'utf8',
     )
     .digest('hex');
@@ -93,7 +100,13 @@ export function analyzeDeterministic(
 ): Phase1AnalysisResult {
   const input = DeterministicAnalysisInputSchema.parse(rawInput);
   const evidence = extractCareerEvidence(input.resume, DEFAULT_NORMALIZATION_DATA.aliases);
-  return analyzeValidated(input, evidence, stableAnalysisId(input), undefined, options);
+  return analyzeValidated(
+    input,
+    evidence,
+    stableAnalysisId(input, options.analysisIdentityKey),
+    undefined,
+    options,
+  );
 }
 
 export function analyzeDeterministicWithEvidence(
@@ -104,7 +117,7 @@ export function analyzeDeterministicWithEvidence(
   return analyzeValidated(
     input,
     input.evidence,
-    stableEvidenceAwareAnalysisId(input),
+    stableEvidenceAwareAnalysisId(input, options.analysisIdentityKey),
     input.profileId,
     options,
   );

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { LocalAnalyzeResponse, LocalSettings } from '@roleproof/shared';
+import type { LocalAnalyzeResponse, LocalResumeSource, LocalSettings } from '@roleproof/shared';
 
 import {
   analyzeLocalStream,
@@ -16,11 +16,13 @@ import TextareaField from '../../components/TextareaField.vue';
 const resumeText = ref('');
 const resumeFile = ref<File | null>(null);
 const resumeFileInput = ref<HTMLInputElement | null>(null);
+const resumeSource = ref<LocalResumeSource | null>(null);
 const jobText = ref('');
 const error = ref('');
 const parseWarnings = ref<string[]>([]);
 const analysisEnvelope = ref<LocalAnalyzeResponse | null>(null);
 const analysisMode = ref<'deterministic' | 'ai-enhanced'>('deterministic');
+const lastRunMode = ref<'deterministic' | 'ai-enhanced' | null>(null);
 const confirmProviderTransmission = ref(false);
 const running = ref(false);
 const progressStage = ref('');
@@ -81,14 +83,14 @@ const endpointLabel = computed(() => {
 
 const redactionLabel = computed(() => {
   const settings = disclosureSettings.value;
-  if (settings == null) return 'None';
-  const parts: string[] = [];
+  if (settings == null) return 'Not configured';
+  const parts = ['Email addresses', 'Phone numbers', 'Addresses'];
   if (settings.redactEmployer === true) parts.push('Employer names');
   if (settings.redactClearance === true) parts.push('Clearance details');
   if (settings.redactionTerms != null && settings.redactionTerms.length > 0) {
-    parts.push(settings.redactionTerms.join(', '));
+    parts.push(...settings.redactionTerms);
   }
-  return parts.length > 0 ? parts.join('; ') : 'None';
+  return parts.join('; ');
 });
 
 const dataLeavesMachine = computed(
@@ -98,10 +100,7 @@ const dataLeavesMachine = computed(
 const providerSelectionDirty = computed(() => {
   const settings = disclosureSettings.value;
   if (settings == null) return true;
-  return (
-    providerDraft.value !== settings.provider ||
-    modelDraft.value !== (settings.model ?? '')
-  );
+  return providerDraft.value !== settings.provider || modelDraft.value !== (settings.model ?? '');
 });
 
 function applyDisclosureSettings(settings: LocalSettings) {
@@ -166,7 +165,9 @@ async function loadModels() {
       ? modelDraft.value
       : (response.models[0]?.id ?? '');
     providerSettingsNotice.value =
-      response.models.length === 0 ? 'No provider models were returned.' : 'Provider models loaded.';
+      response.models.length === 0
+        ? 'No provider models were returned.'
+        : 'Provider models loaded.';
   } catch (cause) {
     availableModels.value = modelDraft.value === '' ? [] : [{ id: modelDraft.value }];
     providerSettingsError.value =
@@ -240,12 +241,14 @@ function updateProgress(event: {
 function selectResumeFile(event: Event) {
   const input = event.currentTarget as HTMLInputElement;
   resumeFile.value = input.files?.[0] ?? null;
+  resumeSource.value = null;
   parseWarnings.value = [];
   error.value = '';
 }
 
 function clearResumeFile() {
   resumeFile.value = null;
+  resumeSource.value = null;
   if (resumeFileInput.value !== null) resumeFileInput.value.value = '';
 }
 
@@ -272,7 +275,9 @@ async function runAnalysis() {
         applyDisclosureSettings(currentSettings);
         confirmProviderTransmission.value = false;
         providerSettingsNotice.value = '';
-        throw new Error('Provider settings changed. Review the updated disclosure and confirm again.');
+        throw new Error(
+          'Provider settings changed. Review the updated disclosure and confirm again.',
+        );
       }
     }
     let selectedResumeText = resumeText.value;
@@ -280,6 +285,18 @@ async function runAnalysis() {
       const parsedResume = await parseResumeFile(resumeFile.value);
       selectedResumeText = parsedResume.text;
       parseWarnings.value = parsedResume.warnings.map((warning) => warning.message);
+      resumeSource.value =
+        parsedResume.confidence === undefined
+          ? null
+          : {
+              format: parsedResume.format,
+              fileName: parsedResume.fileName,
+              contentSha256: parsedResume.contentSha256,
+              confidence: parsedResume.confidence,
+              warnings: parsedResume.warnings,
+            };
+    } else {
+      resumeSource.value = null;
     }
     const envelope = await analyzeLocalStream(
       {
@@ -287,10 +304,12 @@ async function runAnalysis() {
         jobText: jobText.value,
         mode: analysisMode.value,
         confirmProviderTransmission: confirmProviderTransmission.value,
+        ...(resumeSource.value === null ? {} : { resumeSource: resumeSource.value }),
       },
       { onEvent: (event) => event.kind === 'progress' && updateProgress(event) },
     );
     analysisEnvelope.value = envelope;
+    lastRunMode.value = analysisMode.value;
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Analysis failed.';
   } finally {
@@ -426,7 +445,9 @@ async function runAnalysis() {
                     "
                     @change="invalidateProviderConsent"
                   >
-                    <option v-if="availableModels.length === 0" value="">Load models to select</option>
+                    <option v-if="availableModels.length === 0" value="">
+                      Load models to select
+                    </option>
                     <option v-for="model in availableModels" :key="model.id" :value="model.id">
                       {{ model.id }}
                     </option>
@@ -554,13 +575,17 @@ async function runAnalysis() {
     </section>
 
     <p
-      v-if="analysisMode === 'ai-enhanced' && analysisEnvelope?.schemaVersion === '1.0'"
+      v-if="lastRunMode === 'ai-enhanced' && analysisEnvelope?.schemaVersion === '1.0'"
       class="parse-warnings"
       role="status"
     >
       AI enhancement was unavailable, so RoleProof returned the deterministic fallback.
     </p>
 
-    <AnalysisResults v-if="analysisEnvelope" :response="analysisEnvelope" />
+    <AnalysisResults
+      v-if="analysisEnvelope"
+      :response="analysisEnvelope"
+      :submitted-mode="lastRunMode"
+    />
   </main>
 </template>

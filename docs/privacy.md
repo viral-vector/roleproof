@@ -3,8 +3,9 @@
 RoleProof has no telemetry. Deterministic analysis and `--no-ai` perform no provider request.
 Analysis persists by default to a local SQLite database at `~/.roleproof/roleproof.db`; an absolute
 path can be selected with the global `--db` option. AI enhancement is optional and transmits data
-only after the user explicitly selects a provider and, for hosted/custom destinations, passes
-`--confirm-transmission`.
+only after the user explicitly selects a provider and confirms the displayed destination. CLI
+hosted/custom destinations require `--confirm-transmission`; the browser requires the
+provider-transmission confirmation checkbox before it sends redacted analysis inputs.
 
 ## Inputs
 
@@ -22,6 +23,8 @@ only after the user explicitly selects a provider and, for hosted/custom destina
   lines.
 - Tests and repository fixtures contain fictional data only.
 - Browser uploads are held in memory for parsing and are not persisted by the local parse endpoint.
+  The persisted analysis record stores parsed résumé text and source provenance such as safe
+  filename, format, content hash, confidence, and parser warnings when available.
 
 ## Outputs
 
@@ -63,6 +66,9 @@ metadata. An explicit profile still uses the existing database read-only.
 - Provider selection is explicit; API-key environment variables never activate AI.
 - The local web Settings screen stores API keys only in Windows Credential Manager in the current
   local build. Settings API responses expose credential status only, never secret values.
+- Browser AI mode displays provider, model, destination, endpoint, and redaction categories before
+  the confirmation checkbox can enable transmission. Changing provider settings invalidates prior
+  consent.
 - Before a provider call, stderr displays provider, model, destination, endpoint origin, data
   categories, and enabled redaction categories.
 - Provider model-list and health-check calls request endpoint metadata only; they do not include
@@ -71,8 +77,9 @@ metadata. An explicit profile still uses the existing database read-only.
   loopback host. Hosted and custom compatible endpoints require HTTPS and credentials.
 - Requests contain selected requirement text, deterministic classifications, and minimized evidence,
   resume, and job summaries. They do not contain an entire stored profile or unrelated evidence.
-- Email, phone, and common address patterns are redacted by default. Employer names, clearance
-  details, and user-selected terms are redacted only when their corresponding options are enabled.
+- Email, phone, and common address patterns are redacted by default and are disclosed in the browser
+  before consent. Employer names, clearance details, and user-selected terms are redacted only when
+  their corresponding options are enabled.
 - Pattern redaction is best-effort and cannot recognize every sensitive value. Use repeatable
   `--redact-term` options for known sensitive names or phrases and review the preview before consent.
 - Redirects are rejected. Responses are bounded, timed out, and strictly schema validated.
@@ -81,6 +88,8 @@ metadata. An explicit profile still uses the existing database read-only.
 - Provider failure returns the unchanged deterministic baseline. Successful earlier calls and the
   failed call's redaction manifest may be stored as sanitized usage/audit metadata when storage is
   enabled.
+- In the browser, provider construction, credential, timeout, or validation failures return a labeled
+  deterministic fallback rather than hiding blockers or AI status behind the score.
 
 ## Purge
 

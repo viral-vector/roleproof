@@ -1,4 +1,9 @@
-import { renderEnhancedJson, renderJson, renderEnhancedMarkdown, renderMarkdown } from '@roleproof/reporters';
+import {
+  renderEnhancedJson,
+  renderJson,
+  renderEnhancedMarkdown,
+  renderMarkdown,
+} from '@roleproof/reporters';
 import type { LocalAnalyzeResponse } from '@roleproof/shared';
 
 export type AnalysisDownloadFormat = 'json' | 'markdown';
@@ -21,8 +26,7 @@ export function createAnalysisDownload(
   format: AnalysisDownloadFormat,
 ): AnalysisDownload {
   const analysis = response.analysis;
-  const enhancement =
-    response.schemaVersion === '2.0' ? response.aiEnhancement : undefined;
+  const enhancement = response.schemaVersion === '2.0' ? response.aiEnhancement : undefined;
   if (format === 'json') {
     return {
       filename: 'roleproof-analysis.json',

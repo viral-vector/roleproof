@@ -27,7 +27,9 @@ describe('local UI structure', () => {
     expect(results).toContain('Interview topics');
     expect(results).toContain('exportFormats');
     expect(results).toContain('AI-enhanced guidance');
+    expect(results).toContain('Deterministic analysis');
     expect(results).toContain('Deterministic fallback');
+    expect(results).toContain('submittedMode');
     expect(results).toContain('Validated AI Output');
     expect(results).toContain('AI Requirement Interpretations');
   });
@@ -50,7 +52,7 @@ describe('local UI structure', () => {
     expect(results).toContain('getSettings');
     expect(results).toContain('orderedExportFormats');
     expect(results).toContain('export-button-primary');
-    expect(results).toContain('Download {{ format === \'json\' ? \'JSON\' : \'Markdown\' }}');
+    expect(results).toContain("Download {{ format === 'json' ? 'JSON' : 'Markdown' }}");
   });
 
   it('keeps file input and analysis submission on the analyze screen only', async () => {

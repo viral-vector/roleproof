@@ -17,6 +17,15 @@ const jobText = [
   '- PostgreSQL',
 ].join('\n');
 
+const analystJobText = [
+  'Fictional Data Analyst',
+  '',
+  'Required Qualifications',
+  '- SQL',
+  '- Python',
+  '- Tableau',
+].join('\n');
+
 test.beforeEach(async ({ page }) => {
   const history = await page.request.get('/api/history');
   const body = (await history.json()) as { history: Array<{ id: string }> };
@@ -51,14 +60,35 @@ test('stores analyzed reports in history with search and detail', async ({ page 
   await expect(page.getByText('No stored analyses yet.')).toBeVisible();
 });
 
-test('keeps history search results consistent with the stored recommendation', async ({ page }) => {
+test('searches history by distinct job text and the stored recommendation', async ({ page }) => {
   await page.goto('/analyze');
   await page.getByLabel('Resume text').fill(resumeText);
   await page.getByLabel('Job description').fill(jobText);
   await page.getByRole('button', { name: 'Analyze role fit' }).click();
   await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
 
+  await page.getByLabel('Resume text').fill(resumeText);
+  await page.getByLabel('Job description').fill(analystJobText);
+  await page.getByRole('button', { name: 'Analyze role fit' }).click();
+  await expect(page.getByRole('heading', { name: 'Evidence summary' })).toBeVisible();
+
   await page.getByRole('link', { name: 'History', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Open' })).toHaveCount(2);
+
+  await page.getByLabel('Search history').fill('tableau');
+  await page.getByRole('button', { name: 'Search' }).click();
+  const tableauRow = page.locator('.history-row');
+  await expect(tableauRow).toHaveCount(1);
+  const tableauOpen = await tableauRow.getByRole('link', { name: 'Open' }).getAttribute('href');
+
+  await page.getByLabel('Search history').fill('backend');
+  await page.getByRole('button', { name: 'Search' }).click();
+  const backendRow = page.locator('.history-row');
+  await expect(backendRow).toHaveCount(1);
+  await expect(backendRow).toContainText('apply');
+  const backendOpen = await backendRow.getByRole('link', { name: 'Open' }).getAttribute('href');
+  expect(backendOpen).not.toBe(tableauOpen);
+
   await page.getByLabel('Search history').fill('apply');
   await page.getByRole('button', { name: 'Search' }).click();
   await expect(page.getByText('apply', { exact: true })).toBeVisible();

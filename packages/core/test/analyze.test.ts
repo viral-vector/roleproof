@@ -102,6 +102,25 @@ describe('analyzeDeterministic', () => {
     expect(input).toEqual(inputSnapshot);
   });
 
+  it('includes an explicit parsing identity key in the stable analysis ID', () => {
+    const generatedAt = '2026-01-01T00:00:00.000Z';
+    const lowConfidence = analyzeDeterministic(input, {
+      generatedAt,
+      analysisIdentityKey: 'resume-confidence:0.5',
+    });
+    const highConfidence = analyzeDeterministic(input, {
+      generatedAt,
+      analysisIdentityKey: 'resume-confidence:1',
+    });
+    const repeated = analyzeDeterministic(input, {
+      generatedAt,
+      analysisIdentityKey: 'resume-confidence:0.5',
+    });
+
+    expect(highConfidence.id).not.toBe(lowConfidence.id);
+    expect(repeated.id).toBe(lowConfidence.id);
+  });
+
   it('uses manual review for low-confidence requirement extraction', () => {
     const ambiguousInput: DeterministicAnalysisInput = {
       ...input,

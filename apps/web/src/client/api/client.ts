@@ -2,6 +2,7 @@ import {
   LocalAnalyzeRequestSchema,
   LocalAnalyzeResponseSchema,
   LocalAnalyzeStreamEventSchema,
+  LocalHistoryDetailResponseSchema,
   LocalHistoryListResponseSchema,
   LocalProviderCredentialDeleteResponseSchema,
   LocalProviderCredentialProviderSchema,
@@ -14,7 +15,9 @@ import {
   LocalResumeUploadMetadataSchema,
   LocalSettingsPatchSchema,
   LocalSettingsResponseSchema,
+  type LocalHistoryDetailResponse,
   type LocalHistoryListResponse,
+  type LocalResumeSource,
   type LocalProviderCredentialDeleteResponse,
   type LocalProviderCredentialProvider,
   type LocalProviderCredentialSaveRequest,
@@ -42,6 +45,7 @@ export interface AnalyzeLocalInput {
   jobText: string;
   mode?: 'deterministic' | 'ai-enhanced';
   confirmProviderTransmission?: boolean;
+  resumeSource?: LocalResumeSource;
 }
 
 export interface AnalyzeLocalStreamCallbacks {
@@ -94,6 +98,7 @@ export async function analyzeLocal(
         : {}),
       resumeText: input.resumeText,
       jobText: input.jobText,
+      ...(input.resumeSource === undefined ? {} : { resumeSource: input.resumeSource }),
     });
   } catch {
     throw new Error('Analysis request failed. Check the supplied text.');
@@ -157,6 +162,7 @@ export async function analyzeLocalStream(
         : {}),
       resumeText: input.resumeText,
       jobText: input.jobText,
+      ...(input.resumeSource === undefined ? {} : { resumeSource: input.resumeSource }),
     }),
   });
   if (!response.ok) throw new Error('Analysis request failed. Check the supplied text.');
@@ -189,7 +195,7 @@ export async function listHistory(
 export async function getHistoryItem(
   id: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<LocalAnalyzeResponse> {
+): Promise<LocalHistoryDetailResponse> {
   const response = await fetchImpl(`/api/history/${encodeURIComponent(id)}`);
   if (!response.ok) {
     throw new Error(
@@ -200,7 +206,7 @@ export async function getHistoryItem(
           : 'History is unavailable. Check the local server and try again.',
     );
   }
-  return LocalAnalyzeResponseSchema.parse(await response.json());
+  return LocalHistoryDetailResponseSchema.parse(await response.json());
 }
 
 export async function deleteHistoryItem(
@@ -349,10 +355,23 @@ async function readResumeParseError(response: Response): Promise<string> {
   }
 }
 
+export interface ParsedResumeFile extends LocalResumeParseResponse {
+  fileName: string;
+  contentSha256: string;
+}
+
+async function fileContentSha256(file: File): Promise<string> {
+  const bytes = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 export async function parseResumeFile(
   file: File,
   fetchImpl: typeof fetch = fetch,
-): Promise<LocalResumeParseResponse> {
+): Promise<ParsedResumeFile> {
   const lowerName = file.name.toLocaleLowerCase('en-US');
   const format = lowerName.endsWith('.pdf')
     ? ('pdf' as const)
@@ -378,7 +397,8 @@ export async function parseResumeFile(
   }
   if (!response.ok) throw new Error(await readResumeParseError(response));
   try {
-    return LocalResumeParseResponseSchema.parse(await response.json());
+    const parsed = LocalResumeParseResponseSchema.parse(await response.json());
+    return { ...parsed, fileName: file.name, contentSha256: await fileContentSha256(file) };
   } catch {
     throw new Error(GENERIC_RESUME_PARSE_ERROR);
   }

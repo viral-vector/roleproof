@@ -188,9 +188,13 @@ successful response follows `LocalResumeParseResponseSchema`:
   "schemaVersion": "1.0",
   "text": "Fictional extracted resume text",
   "format": "pdf",
+  "confidence": 0.5,
   "warnings": []
 }
 ```
+
+Current servers include `confidence`. The v1.0 response parser also accepts legacy responses that
+omit it; clients must not submit resume provenance when parse confidence is unavailable.
 
 Malformed, unsupported, empty, or oversized files return a content-free error. PDF page, image,
 extracted-text, and timeout limits remain enforced by the canonical parser configuration; DOCX

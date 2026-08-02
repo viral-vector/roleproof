@@ -229,7 +229,10 @@ onMounted(() => {
           <p class="section-index">Local configuration</p>
           <h2 id="settings-title">Settings</h2>
         </div>
-        <p>Stored in the local database. Nothing here is sent anywhere.</p>
+        <p>
+          Stored in the local database. Settings and career content stay local; loading models sends
+          only a metadata request to the configured provider endpoint.
+        </p>
       </header>
 
       <p v-if="loading" class="loading-note" role="status">Loading settings...</p>
@@ -238,8 +241,8 @@ onMounted(() => {
         <fieldset class="settings-fieldset">
           <legend>AI enhancement</legend>
           <p class="fieldset-note">
-            Optional. Deterministic analysis never requires a provider; these limits only apply when
-            AI enhancement is enabled later.
+            Optional. Deterministic analysis never requires a provider; these limits apply when AI
+            enhancement is enabled.
           </p>
           <div class="settings-grid">
             <div class="settings-field">

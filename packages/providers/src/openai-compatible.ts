@@ -117,9 +117,7 @@ function nestedEvidenceIds(value: unknown): string[] {
     ...new Set(
       value.requirements
         .filter(isRecord)
-        .flatMap((item) =>
-          Array.isArray(item.evidenceIds) ? (item.evidenceIds as unknown[]) : [],
-        )
+        .flatMap((item) => (Array.isArray(item.evidenceIds) ? (item.evidenceIds as unknown[]) : []))
         .filter((id): id is string => typeof id === 'string'),
     ),
   ].sort();
@@ -177,7 +175,10 @@ function constrainedOutputSchema(
   return schema;
 }
 
-function idAliases(ids: readonly string[], prefix: string): {
+function idAliases(
+  ids: readonly string[],
+  prefix: string,
+): {
   toAlias: ReadonlyMap<string, string>;
   fromAlias: ReadonlyMap<string, string>;
 } {
@@ -188,7 +189,11 @@ function idAliases(ids: readonly string[], prefix: string): {
   };
 }
 
-function replaceId(record: Record<string, unknown>, field: string, ids: ReadonlyMap<string, string>) {
+function replaceId(
+  record: Record<string, unknown>,
+  field: string,
+  ids: ReadonlyMap<string, string>,
+) {
   const value = record[field];
   if (typeof value === 'string') record[field] = ids.get(value) ?? value;
 }
@@ -413,11 +418,7 @@ export class OpenAICompatibleProvider implements AIProvider {
   }
 
   #parseResponse(operation: ProviderOperation, value: unknown) {
-    if (
-      !isRecord(value) ||
-      !Array.isArray(value.choices) ||
-      value.choices.length !== 1
-    ) {
+    if (!isRecord(value) || !Array.isArray(value.choices) || value.choices.length !== 1) {
       throw new ProviderError('invalid-output', operation);
     }
     const choice = (value.choices as unknown[])[0];

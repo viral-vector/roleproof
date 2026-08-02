@@ -28,6 +28,7 @@ import {
   LocalAnalyzeRequestSchema,
   LocalAnalyzeResponseSchema,
   LocalAnalyzeStreamEventSchema,
+  LocalHistoryDetailResponseSchema,
   LocalHistoryListResponseSchema,
   LocalHistoryQuerySchema,
   LocalProviderCredentialDeleteResponseSchema,
@@ -47,9 +48,9 @@ import {
   type CandidateContext,
   type JobRequirement,
   type LocalSettings,
+  type LocalResumeSource,
   type ParsedDocument,
   type ProviderConfig,
-  type StoredDocument,
 } from '@roleproof/shared';
 import {
   buildProviderInputs,
@@ -117,16 +118,15 @@ function emptyCandidateContext(): CandidateContext {
   });
 }
 
-function parsedResume(document: StoredDocument): ParsedDocument {
-  return {
-    schemaVersion: '1.0',
-    id: document.id,
-    kind: 'resume',
-    format: document.format,
-    text: document.text,
-    confidence: document.confidence,
-    warnings: document.warnings,
-  };
+function resumeAnalysisIdentityKey(source?: LocalResumeSource): string | undefined {
+  if (source === undefined) return undefined;
+  return JSON.stringify({
+    format: source.format,
+    fileName: source.fileName,
+    contentSha256: source.contentSha256,
+    confidence: source.confidence,
+    warnings: source.warnings.map((warning) => `${warning.code}\0${warning.message}`).sort(),
+  });
 }
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -261,6 +261,7 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
             resume,
             job,
             candidateContext,
+            parsed.data.resumeSource,
           );
           analysis = storedAnalysis.analysis;
         } catch (storageError) {
@@ -332,7 +333,6 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
       });
       let analysis: AnalysisResult = analyzeDeterministic({ resume, job, candidateContext });
       let storedAnalysis: PersistedAnalysis | undefined;
-      let enhancementResult: Awaited<ReturnType<typeof enhanceAnalysisWithFallback>> | undefined;
       if (repositories !== undefined) {
         try {
           storedAnalysis = await persistAnalysis(
@@ -342,6 +342,7 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
             resume,
             job,
             candidateContext,
+            parsed.data.resumeSource,
           );
           analysis = storedAnalysis.analysis;
         } catch (storageError) {
@@ -359,13 +360,6 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
           reply.raw.end();
           return;
         }
-        const settings = defaultLocalAiSettings(await repositories.settings.get());
-        const config = configFromSettings(settings);
-        const inputs = buildProviderInputs(
-          storedAnalysis.analysis,
-          storedAnalysis.requirements,
-          storedAnalysis.evidence,
-        );
         write({
           kind: 'progress',
           stage: 'provider-requirements',
@@ -373,17 +367,7 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
           total: 4,
           message: 'Interpreting requirements.',
         });
-        const provider = await providerFactory(config);
-        const fingerprint = providerConfigFingerprint(config);
-        const startedAt = new Date().toISOString();
-        enhancementResult = await enhanceAnalysisWithFallback(
-          storedAnalysis.analysis,
-          provider,
-          inputs.requirementAnalysis,
-          inputs.evidenceMapping,
-          inputs.applicationSuggestions,
-          [],
-        );
+        const enhanced = await enhanceStoredAnalysis(repositories, providerFactory, storedAnalysis);
         write({
           kind: 'progress',
           stage: 'provider-evidence',
@@ -405,31 +389,7 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
           total: 4,
           message: 'Analysis complete.',
         });
-        if (enhancementResult.enhancement !== undefined) {
-          const enhancement = await saveEnhancement(
-            repositories,
-            enhancementResult.enhancement,
-            fingerprint,
-          );
-          write({
-            kind: 'result',
-            response: {
-              schemaVersion: '2.0',
-              analysis: storedAnalysis.analysis,
-              aiEnhancement: enhancement,
-            },
-          });
-        } else {
-          await recordProviderFailure(
-            repositories,
-            storedAnalysis.analysis.id,
-            config,
-            provider,
-            enhancementResult,
-            startedAt,
-          );
-          write({ kind: 'result', response: { schemaVersion: '1.0', analysis } });
-        }
+        write({ kind: 'result', response: enhanced });
         reply.raw.end();
         return;
       }
@@ -485,6 +445,7 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
           schemaVersion: '1.0',
           text: document.text,
           format: document.format,
+          confidence: document.confidence,
           warnings: document.warnings,
         }),
       );
@@ -550,7 +511,7 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
       const enhancement = await storage.aiEnhancements.get(id);
       if (enhancement !== undefined) {
         return reply.send(
-          LocalAnalyzeResponseSchema.parse(
+          LocalHistoryDetailResponseSchema.parse(
             EnhancedAnalysisEnvelopeSchema.parse({
               schemaVersion: '2.0',
               analysis: stored.result,
@@ -560,7 +521,7 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
         );
       }
       return reply.send(
-        LocalAnalyzeResponseSchema.parse({ schemaVersion: '1.0', analysis: stored.result }),
+        LocalHistoryDetailResponseSchema.parse({ schemaVersion: '1.0', analysis: stored.result }),
       );
     } catch (error) {
       if (error instanceof StorageError) {
@@ -789,7 +750,8 @@ function configFromSettings(settings: LocalSettings): ProviderConfig {
 }
 
 function defaultLocalAiSettings(settings: LocalSettings): LocalSettings {
-  if (settings.provider != null || settings.model != null || settings.baseUrl != null) return settings;
+  if (settings.provider != null || settings.model != null || settings.baseUrl != null)
+    return settings;
   return {
     ...settings,
     provider: 'openai-compatible',
@@ -889,6 +851,30 @@ async function recordProviderFailure(
   });
 }
 
+async function recordProviderConfigurationFailure(
+  repositories: RoleProofRepositories,
+  baselineAnalysisId: string,
+  settings: LocalSettings,
+  error: ProviderError,
+  startedAt: string,
+): Promise<void> {
+  console.error(`[roleproof] provider configuration failed (${error.code}).`);
+  await repositories.providerCalls.recordFailure({
+    baselineAnalysisId,
+    provider: settings.provider ?? 'openai-compatible',
+    model: settings.model ?? 'unknown',
+    operation: error.operation,
+    destination: settings.destination ?? (settings.provider === 'openai' ? 'hosted' : 'local'),
+    endpointOrigin: null,
+    errorCode: error.code,
+    manifest: null,
+    requestId: null,
+    startedAt,
+    completedAt: new Date().toISOString(),
+    durationMs: 0,
+  });
+}
+
 async function enhanceStoredAnalysis(
   repositories: RoleProofRepositories,
   providerFactory: (config: ProviderConfig) => AIProvider | Promise<AIProvider>,
@@ -901,16 +887,31 @@ async function enhanceStoredAnalysis(
     config = configFromSettings(settings);
     provider = await providerFactory(config);
   } catch (error) {
-    if (error instanceof ProviderError) {
-      throw new StorageError('VALIDATION_FAILED', 'Invalid provider settings', { cause: error });
-    }
-    throw error;
+    const providerError =
+      error instanceof ProviderError ? error : new ProviderError('configuration', 'health-check');
+    const startedAt = new Date().toISOString();
+    await recordProviderConfigurationFailure(
+      repositories,
+      stored.analysis.id,
+      settings,
+      providerError,
+      startedAt,
+    );
+    return { schemaVersion: '1.0' as const, analysis: stored.analysis };
   }
   const fingerprint = providerConfigFingerprint(config);
   const existing = await repositories.aiEnhancements.get(stored.analysis.id);
   if (existing !== undefined) {
     if (existing.configFingerprint !== fingerprint) {
-      throw new StorageError('VALIDATION_FAILED', 'AI enhancement configuration has changed');
+      const startedAt = new Date().toISOString();
+      await recordProviderConfigurationFailure(
+        repositories,
+        stored.analysis.id,
+        settings,
+        new ProviderError('configuration', 'health-check'),
+        startedAt,
+      );
+      return { schemaVersion: '1.0' as const, analysis: stored.analysis };
     }
     return EnhancedAnalysisEnvelopeSchema.parse({
       schemaVersion: '2.0',
@@ -937,7 +938,14 @@ async function enhanceStoredAnalysis(
     });
   }
 
-  await recordProviderFailure(repositories, stored.analysis.id, config, provider, result, startedAt);
+  await recordProviderFailure(
+    repositories,
+    stored.analysis.id,
+    config,
+    provider,
+    result,
+    startedAt,
+  );
   return { schemaVersion: '1.0' as const, analysis: stored.analysis };
 }
 
@@ -948,11 +956,21 @@ async function persistAnalysis(
   resume: ParsedDocument,
   job: ParsedDocument,
   candidateContext: CandidateContext,
+  resumeSource?: LocalResumeSource,
 ): Promise<PersistedAnalysis> {
   const profile = await repositories.profiles.ensureDefault();
   const profileId = profile.id;
   const documentId = stableId('document', profileId, resume.id);
   const activeResume = { ...resume, id: documentId };
+  const analysisResume: ParsedDocument =
+    resumeSource === undefined
+      ? activeResume
+      : {
+          ...activeResume,
+          format: resumeSource.format,
+          confidence: resumeSource.confidence,
+          warnings: resumeSource.warnings,
+        };
   const extractedEvidence = extractCareerEvidence(
     activeResume,
     DEFAULT_NORMALIZATION_DATA.aliases,
@@ -964,18 +982,18 @@ async function persistAnalysis(
       id: documentId,
       profileId,
       kind: 'resume',
-      format: 'plaintext',
-      contentSha256: sha256(resumeText),
+      format: resumeSource?.format ?? 'plaintext',
+      ...(resumeSource?.fileName === undefined ? {} : { originalName: resumeSource.fileName }),
+      contentSha256: resumeSource?.contentSha256 ?? sha256(resumeText),
       parsedContentSha256: sha256(resume.text),
       text: resume.text,
-      confidence: resume.confidence,
-      warnings: resume.warnings,
+      confidence: resumeSource?.confidence ?? resume.confidence,
+      warnings: resumeSource?.warnings ?? resume.warnings,
     },
     extractedEvidence,
   );
   const storedResume =
     duplicate.status === 'none' ? await repositories.documents.get(documentId) : duplicate.document;
-  const analysisResume = storedResume === undefined ? activeResume : parsedResume(storedResume);
   const evidence: CareerEvidence[] =
     storedResume === undefined
       ? extractedEvidence
@@ -996,13 +1014,17 @@ async function persistAnalysis(
     requirements,
   );
   const analysisJob = { ...job, id: storedJob.id };
-  const analysis = analyzeDeterministicWithEvidence({
-    resume: analysisResume,
-    job: analysisJob,
-    candidateContext,
-    profileId,
-    evidence,
-  });
+  const analysisIdentityKey = resumeAnalysisIdentityKey(resumeSource);
+  const analysis = analyzeDeterministicWithEvidence(
+    {
+      resume: analysisResume,
+      job: analysisJob,
+      candidateContext,
+      profileId,
+      evidence,
+    },
+    analysisIdentityKey === undefined ? {} : { analysisIdentityKey },
+  );
   const existing = await repositories.analyses.get(analysis.id);
   if (existing !== undefined) {
     return { analysis: existing.result, requirements, evidence };

@@ -67,3 +67,20 @@ jobs:
 
       - name: Smoke test deterministic Markdown analysis
         run: pnpm exec roleproof analyze --resume fixtures/phase-1/strong-match/resume.txt --job fixtures/phase-1/strong-match/job.txt --no-ai --format markdown --stdout
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Test browser end-to-end
+        run: pnpm test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.os }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7

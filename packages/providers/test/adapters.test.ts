@@ -546,9 +546,7 @@ describe('OpenAI-compatible adapter', () => {
         },
       ],
     };
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(compatibleResponse(aliasedOutput));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(compatibleResponse(aliasedOutput));
     const provider = new OpenAICompatibleProvider(compatibleConfig, null, fetchMock);
     const call = context(
       compatibleConfig,
@@ -608,12 +606,7 @@ describe('OpenAI-compatible adapter', () => {
     );
 
     const result = await provider.analyzeRequirements(
-      context(
-        compatibleConfig,
-        'http://localhost:11434/v1/chat/completions',
-        input,
-        [],
-      ),
+      context(compatibleConfig, 'http://localhost:11434/v1/chat/completions', input, []),
     );
 
     expect(result.output.requirements[0]).toMatchObject({

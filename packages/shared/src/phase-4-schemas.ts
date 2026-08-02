@@ -19,12 +19,44 @@ const localApiTextSchema = z
   .max(MAX_LOCAL_API_TEXT_CHARS)
   .refine((value) => value.trim().length > 0, { message: 'Text must not be blank' });
 
+const safeFileNameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .refine((value) => value.trim() === value && !/[\\/]/u.test(value), {
+    message: 'File name must be a safe base name',
+  });
+
+const sha256Schema = z.string().regex(/^[a-f\d]{64}$/u, 'Value must be a lowercase SHA-256 hash');
+
+export const LocalResumeSourceSchema = z
+  .object({
+    format: z.enum(['plaintext', 'pdf', 'docx']),
+    fileName: safeFileNameSchema,
+    contentSha256: sha256Schema,
+    confidence: z.number().finite().min(0).max(1),
+    warnings: z.array(ParseWarningSchema),
+  })
+  .strict()
+  .superRefine((source, context) => {
+    const expectedExtension =
+      source.format === 'pdf' ? '.pdf' : source.format === 'docx' ? '.docx' : '.txt';
+    if (!source.fileName.toLocaleLowerCase('en-US').endsWith(expectedExtension)) {
+      context.addIssue({
+        code: 'custom',
+        message: `File name must end with ${expectedExtension}`,
+        path: ['fileName'],
+      });
+    }
+  });
+
 const LocalDeterministicAnalyzeRequestSchema = z
   .object({
     schemaVersion: z.literal('1.0'),
     resumeText: localApiTextSchema,
     jobText: localApiTextSchema,
     mode: z.literal('deterministic').default('deterministic'),
+    resumeSource: LocalResumeSourceSchema.optional(),
   })
   .strict();
 
@@ -35,6 +67,7 @@ const LocalAIAnalyzeRequestSchema = z
     jobText: localApiTextSchema,
     mode: z.literal('ai-enhanced'),
     confirmProviderTransmission: z.literal(true),
+    resumeSource: LocalResumeSourceSchema.optional(),
   })
   .strict();
 
@@ -90,13 +123,7 @@ export const LocalAnalyzeStreamEventSchema = z.union([
 
 export const LocalResumeUploadMetadataSchema = z
   .object({
-    fileName: z
-      .string()
-      .min(1)
-      .max(255)
-      .refine((value) => value.trim() === value && !/[\\/]/u.test(value), {
-        message: 'File name must be a safe base name',
-      }),
+    fileName: safeFileNameSchema,
     format: z.enum(['plaintext', 'pdf', 'docx']),
     byteLength: z.number().int().positive().max(LOCAL_RESUME_PDF_MAX_BYTES),
   })
@@ -132,6 +159,7 @@ export const LocalResumeParseResponseSchema = z
     schemaVersion: z.literal('1.0'),
     text: localApiTextSchema,
     format: z.enum(['plaintext', 'pdf', 'docx']),
+    confidence: z.number().finite().min(0).max(1).optional(),
     warnings: z.array(ParseWarningSchema),
   })
   .strict();
@@ -162,7 +190,7 @@ export const LocalHistoryListResponseSchema = z
   })
   .strict();
 
-export const LocalHistoryDetailResponseSchema = AnalysisEnvelopeSchema;
+export const LocalHistoryDetailResponseSchema = LocalAnalyzeResponseSchema;
 
 export const LocalHistoryQuerySchema = z
   .object({
@@ -303,6 +331,7 @@ export type LocalAnalyzeResultEvent = z.infer<typeof LocalAnalyzeResultEventSche
 export type LocalAnalyzeErrorEvent = z.infer<typeof LocalAnalyzeErrorEventSchema>;
 export type LocalAnalyzeStreamEvent = z.infer<typeof LocalAnalyzeStreamEventSchema>;
 export type LocalAnalyzeProgressStage = z.infer<typeof LocalAnalyzeProgressStageSchema>;
+export type LocalResumeSource = z.infer<typeof LocalResumeSourceSchema>;
 export type LocalResumeUploadMetadata = z.infer<typeof LocalResumeUploadMetadataSchema>;
 export type LocalResumeParseResponse = z.infer<typeof LocalResumeParseResponseSchema>;
 export type LocalResumeParseError = z.infer<typeof LocalResumeParseErrorSchema>;

@@ -21,7 +21,12 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm test:cli
+pnpm test:e2e
 ```
+
+E2E validation starts a dedicated local server on port 4174 against a fresh temporary database created
+in the system temporary directory. The `test:e2e` script removes those `roleproof-e2e-*.db` files
+after each run via `scripts/e2e-db-cleanup.mjs`.
 
 Pack and install the seven packages in a temporary directory before publishing. Verify that the
 installed `roleproof` executable prints the release version and completes deterministic JSON and

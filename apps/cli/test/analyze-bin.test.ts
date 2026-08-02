@@ -35,71 +35,63 @@ describe('built roleproof analyze executable', () => {
     await rm(directory, { force: true, maxRetries: 3, recursive: true, retryDelay: 50 });
   });
 
-  it(
-    'emits pure JSON and readable Markdown from fictional text fixtures',
-    () => {
-      const resumePath = join(fixtureRoot, 'strong-match', 'resume.txt');
-      const jobPath = join(fixtureRoot, 'strong-match', 'job.txt');
-      const jsonResult = invoke([
-        'analyze',
-        '--resume',
-        resumePath,
-        '--job',
-        jobPath,
-        '--no-ai',
-        '--no-store',
-        '--format',
-        'json',
-        '--stdout',
-      ]);
-      const markdownResult = invoke([
-        'analyze',
-        '--resume',
-        resumePath,
-        '--job',
-        jobPath,
-        '--no-ai',
-        '--no-store',
-        '--format',
-        'markdown',
-        '--stdout',
-      ]);
+  it('emits pure JSON and readable Markdown from fictional text fixtures', () => {
+    const resumePath = join(fixtureRoot, 'strong-match', 'resume.txt');
+    const jobPath = join(fixtureRoot, 'strong-match', 'job.txt');
+    const jsonResult = invoke([
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+    const markdownResult = invoke([
+      'analyze',
+      '--resume',
+      resumePath,
+      '--job',
+      jobPath,
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'markdown',
+      '--stdout',
+    ]);
 
-      expect(jsonResult.status).toBe(0);
-      expect(jsonResult.stderr).toBe('');
-      expect(() => AnalysisEnvelopeSchema.parse(parseJson(jsonResult.stdout))).not.toThrow();
-      expect(markdownResult.status).toBe(0);
-      expect(markdownResult.stderr).toBe('');
-      expect(markdownResult.stdout).toContain('# RoleProof Analysis');
-    },
-    120_000,
-  );
+    expect(jsonResult.status).toBe(0);
+    expect(jsonResult.stderr).toBe('');
+    expect(() => AnalysisEnvelopeSchema.parse(parseJson(jsonResult.stdout))).not.toThrow();
+    expect(markdownResult.status).toBe(0);
+    expect(markdownResult.stderr).toBe('');
+    expect(markdownResult.stdout).toContain('# RoleProof Analysis');
+  }, 120_000);
 
-  it(
-    'produces stable normalized JSON across repeated executable runs',
-    () => {
-      const args = [
-        'analyze',
-        '--resume',
-        join(fixtureRoot, 'strong-match', 'resume.txt'),
-        '--job',
-        join(fixtureRoot, 'strong-match', 'job.txt'),
-        '--no-ai',
-        '--no-store',
-        '--format',
-        'json',
-        '--stdout',
-      ];
-      const first = AnalysisEnvelopeSchema.parse(parseJson(invoke(args).stdout));
-      const second = AnalysisEnvelopeSchema.parse(parseJson(invoke(args).stdout));
+  it('produces stable normalized JSON across repeated executable runs', () => {
+    const args = [
+      'analyze',
+      '--resume',
+      join(fixtureRoot, 'strong-match', 'resume.txt'),
+      '--job',
+      join(fixtureRoot, 'strong-match', 'job.txt'),
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ];
+    const first = AnalysisEnvelopeSchema.parse(parseJson(invoke(args).stdout));
+    const second = AnalysisEnvelopeSchema.parse(parseJson(invoke(args).stdout));
 
-      expect({ ...second.analysis, generatedAt: 'ignored' }).toEqual({
-        ...first.analysis,
-        generatedAt: 'ignored',
-      });
-    },
-    120_000,
-  );
+    expect({ ...second.analysis, generatedAt: 'ignored' }).toEqual({
+      ...first.analysis,
+      generatedAt: 'ignored',
+    });
+  }, 120_000);
 
   it('writes both formats to the working directory when out is omitted', async () => {
     const outputDirectory = join(directory, 'default reports');
