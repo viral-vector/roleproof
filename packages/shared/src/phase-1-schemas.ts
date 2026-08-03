@@ -150,6 +150,10 @@ export const SkillAliasDataSchema = z
           canonicalName: nonBlankStringSchema,
           category: SkillAliasCategorySchema,
           aliases: z.array(nonBlankStringSchema),
+          caseSensitive: z
+            .boolean()
+            .optional()
+            .describe('Match this skill and its aliases with exact case-sensitive spelling.'),
         })
         .strict(),
     ),

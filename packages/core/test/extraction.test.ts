@@ -321,6 +321,70 @@ describe('extractJobRequirements', () => {
     expect(rust?.normalizedName).toBeUndefined();
   });
 
+  it('recognizes conversational requirements headings without lowering confidence', () => {
+    const conversationalJob: ParsedDocument = {
+      ...job,
+      id: 'job-conversational-required-heading',
+      text: [
+        'Senior Full Stack Engineer',
+        'What do we need from you?',
+        '- Experience building and maintaining Node.js services.',
+        '- Strong analytical and problem-solving skills.',
+      ].join('\n'),
+    };
+
+    const extraction = extractJobRequirements(
+      conversationalJob,
+      DEFAULT_NORMALIZATION_DATA.aliases,
+    );
+
+    expect(extraction.confidence).toBe(1);
+    expect(extraction.warnings).not.toContain('Required versus preferred importance is ambiguous.');
+    expect(
+      extraction.requirements.find((item) => item.normalizedName === 'Node.js')?.importance,
+    ).toBe('required');
+    expect(
+      extraction.requirements.find(
+        (item) => item.text === 'Strong analytical and problem-solving skills.',
+      )?.normalizedName,
+    ).toBe('Problem solving');
+  });
+
+  it.each(['7-10 years', '7–10 years', '7 to 10 years'])(
+    'uses the minimum requested experience from the range %s',
+    (range) => {
+      const rangeJob: ParsedDocument = {
+        ...job,
+        id: `job-years-${range}`,
+        text: `Required Qualifications\n- ${range} of TypeScript experience`,
+      };
+
+      const extraction = extractJobRequirements(rangeJob, DEFAULT_NORMALIZATION_DATA.aliases);
+
+      expect(extraction.requirements).toEqual([
+        expect.objectContaining({ normalizedName: 'TypeScript', yearsRequested: 7 }),
+      ]);
+    },
+  );
+
+  it('extracts every reviewed concept from a mixed technology clause', () => {
+    const mixedConceptJob: ParsedDocument = {
+      ...job,
+      id: 'job-mixed-reviewed-concepts',
+      text: [
+        'Required Qualifications',
+        '- Experience building Node.js services that interface with distributed APIs or LLMs.',
+      ].join('\n'),
+    };
+
+    const names = extractJobRequirements(
+      mixedConceptJob,
+      DEFAULT_NORMALIZATION_DATA.aliases,
+    ).requirements.map((requirement) => requirement.normalizedName);
+
+    expect(names).toEqual(expect.arrayContaining(['Node.js', 'Distributed APIs', 'LLM']));
+  });
+
   it('does not promote explicitly non-required wording to mandatory', () => {
     const negatedJob: ParsedDocument = {
       ...job,
@@ -404,6 +468,35 @@ describe('extractJobRequirements', () => {
 
     expect(extraction.requirements).toHaveLength(1);
     expect(extraction.requirements[0]?.normalizedName).toBe('TypeScript');
+  });
+
+  it('excludes tiered compensation and hosted application-form fields from requirements', () => {
+    const hostedApplicationJob: ParsedDocument = {
+      ...job,
+      id: 'job-hosted-application-metadata',
+      text: [
+        'What do we need from you?',
+        '- Experience building Node.js services.',
+        'Tier 1 Salary Hiring Range',
+        '$190,000 - $230,000 USD',
+        'Tier 2 Salary Hiring Range',
+        '$170,000 - $205,000 USD',
+        'Apply for this job',
+        'First Name *',
+        'What is your preferred programming language? *',
+        'Are you authorized to work lawfully in the United States? *',
+      ].join('\n'),
+    };
+
+    const extraction = extractJobRequirements(
+      hostedApplicationJob,
+      DEFAULT_NORMALIZATION_DATA.aliases,
+    );
+
+    expect(extraction.requirements).toHaveLength(1);
+    expect(extraction.requirements[0]).toEqual(
+      expect.objectContaining({ normalizedName: 'Node.js', importance: 'required' }),
+    );
   });
 
   it('detects conflicting importance for unnormalized requirements', () => {

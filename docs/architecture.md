@@ -93,7 +93,11 @@ validated envelope only, including provider fallback and blocker exits.
 
 `packages/core` owns versioned normalization data, explicit evidence and requirement extraction,
 evidence-aware non-transitive matching, blockers, explainable scoring, recommendations, stable IDs,
-and deterministic orchestration. Its evidence-aware entry point accepts profile evidence through a
+and deterministic orchestration. Normalization data maps aliases to canonical skills and marks
+ambiguous short names (such as `Go`) as case-sensitive so ordinary prose is never mistaken for
+experience. Generic multiword responsibilities are normalized only when the versioned taxonomy
+defines them; everything else stays unnormalized and requires review instead of being reported as
+missing experience. Its evidence-aware entry point accepts profile evidence through a
 shared schema and does not depend on storage. Inferred evidence remains confirmation-only and earns
 zero points. Requirement importance is resolved clause-by-clause, and eligibility blockers consume
 the resulting structured required requirements rather than independently guessing qualification
@@ -107,7 +111,11 @@ from the numeric score.
 It normalizes plaintext, extracts PDF and DOCX text, rejects blank or binary-like input, and enforces
 byte, page, image, and timeout limits before or during extraction. PDF.js resources are released
 after completion and on timeout. DOCX text is extracted in memory from the ZIP package with no
-external Office process. Jobs accept plaintext only; resumes accept plaintext, PDF, and DOCX.
+external Office process. Jobs accept plaintext or bounded HTTP(S) pages; resumes accept plaintext,
+PDF, and DOCX. URL-backed jobs use a layered deterministic extractor: `JobPosting` JSON-LD first,
+small Greenhouse/Lever/Ashby container adapters second, semantic `main`/`article` content third, and
+a sanitized whole-page fallback last. Forms, navigation, footers, and other page chrome are removed
+before requirement extraction.
 
 ### Reporters
 

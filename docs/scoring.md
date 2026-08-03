@@ -34,11 +34,17 @@ relationships can produce only strongly or partially related matches. Relationsh
 chained transitively. A supported match and score contribution must cite evidence IDs. Mandatory
 requirements outside the version-controlled normalization data are retained but left unnormalized
 and classified `unknown`; RoleProof does not claim that missing normalization proves missing
-experience. Explicit candidate-context eligibility facts can produce direct eligibility support
-when category-specific comparison confirms the required level or value. Each match includes at
-most 100 deterministically selected evidence references to bound result size. Repeated requirements
-for the same skill and importance retain the strictest requested duration. Analysis is bounded to
-500 semantic requirements; exceeding that limit lowers confidence and requires manual review.
+experience. Ambiguous short aliases (for example the Go language versus the English verb) are
+matched case-sensitively, while their spelled-out forms stay case-insensitive. Explicit candidate-
+context eligibility facts can produce direct eligibility support when category-specific comparison
+confirms the required level or value. Each match includes at most 100 deterministically selected
+evidence references to bound result size. Repeated requirements for the same skill and importance
+retain the strictest requested duration. Requested experience ranges (`7-10 years`, `7 to 10
+years`) are read at their minimum bound, so a range never claims more experience than the posting
+demands. An explicit years-of-experience claim in evidence (`14+ years of TypeScript experience`)
+can satisfy the requested duration when the claim names the same skill; year-only boundary dates
+alone are never inferred as full durations. Analysis is bounded to 500 semantic requirements;
+exceeding that limit lowers confidence and requires manual review.
 
 ## Recommendations
 

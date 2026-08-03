@@ -7,6 +7,11 @@
       "aliases": [".NET Core"]
     },
     {
+      "canonicalName": "AI coding assistants",
+      "category": "other",
+      "aliases": []
+    },
+    {
       "canonicalName": "AKS",
       "category": "infrastructure",
       "aliases": ["Azure Kubernetes Service"]
@@ -37,6 +42,11 @@
       "aliases": ["containers"]
     },
     {
+      "canonicalName": "Distributed APIs",
+      "category": "other",
+      "aliases": ["distributed API", "distributed APIs"]
+    },
+    {
       "canonicalName": "Docker",
       "category": "infrastructure",
       "aliases": []
@@ -54,7 +64,8 @@
     {
       "canonicalName": "Go",
       "category": "language",
-      "aliases": ["Golang"]
+      "aliases": ["Golang"],
+      "caseSensitive": true
     },
     {
       "canonicalName": "Graph database",
@@ -84,6 +95,16 @@
     {
       "canonicalName": "Laravel",
       "category": "framework",
+      "aliases": []
+    },
+    {
+      "canonicalName": "LLM",
+      "category": "other",
+      "aliases": ["LLMs", "large language model", "large language models"]
+    },
+    {
+      "canonicalName": "Microservices",
+      "category": "other",
       "aliases": []
     },
     {
@@ -117,6 +138,11 @@
       "aliases": ["Postgres"]
     },
     {
+      "canonicalName": "Problem solving",
+      "category": "other",
+      "aliases": ["problem-solving", "problem solving"]
+    },
+    {
       "canonicalName": "Relational database",
       "category": "database",
       "aliases": ["relational DB", "RDBMS"]
@@ -125,6 +151,16 @@
       "canonicalName": "REST API",
       "category": "other",
       "aliases": ["RESTful API", "REST APIs", "RESTful APIs"]
+    },
+    {
+      "canonicalName": "SaaS",
+      "category": "other",
+      "aliases": []
+    },
+    {
+      "canonicalName": "Service-oriented architecture",
+      "category": "other",
+      "aliases": ["service-oriented architectures"]
     },
     {
       "canonicalName": "SQL Server",

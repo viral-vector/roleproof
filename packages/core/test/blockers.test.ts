@@ -82,6 +82,15 @@ Onsite in Austin, TX is required.
     expect(detectHardBlockers(role, emptyContext)).toEqual([]);
   });
 
+  it.each([
+    'Candidates must be authorized to work in the US because sponsorship is not offered.',
+    'Candidates must be authorized to work in the US because we do not offer sponsorship.',
+  ])('uses no-sponsorship wording consistently for blockers: %s', (text) => {
+    expect(detect(text, { ...emptyContext, workAuthorization: 'Requires sponsorship' })).toEqual([
+      expect.stringContaining('Work authorization mismatch'),
+    ]);
+  });
+
   it('does not turn preferred qualifications into blockers', () => {
     const role = job(`
 Secret clearance preferred.

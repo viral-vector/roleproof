@@ -142,6 +142,68 @@ describe('analyzeDeterministic', () => {
     );
   });
 
+  it('does not force manual review for supported jobs with conversational requirement headings', () => {
+    const conversationalInput: DeterministicAnalysisInput = {
+      ...input,
+      resume: {
+        ...resume,
+        id: 'resume-conversational-job-fit',
+        text: [
+          'Skills: TypeScript, Node.js, PostgreSQL, Redis, Kubernetes, Go, AI-enabled applications',
+          '2014-2026: Built production TypeScript and Node.js services with PostgreSQL and Redis.',
+          '2021-2026: Led microservices modernization, Kubernetes deployments, production support, and mentoring.',
+          '2024-2026: Used AI coding assistants as productivity tools while reviewing generated code.',
+          'Work authorization: Authorized to work lawfully in the United States without sponsorship.',
+        ].join('\n'),
+      },
+      job: {
+        ...job,
+        id: 'job-conversational-job-fit',
+        text: [
+          'Senior Full Stack Engineer',
+          'What do we need from you?',
+          '- 7-10 years of professional software development experience in a SaaS environment.',
+          '- Experience building and maintaining Node.js services that interface with distributed APIs or LLMs.',
+          '- Hands-on experience with microservices and service-oriented architecture.',
+          '- Experience using AI coding assistants as productivity tools.',
+          '- Authorized to work lawfully in the United States, as sponsorship is not offered.',
+        ].join('\n'),
+      },
+    };
+
+    const result = analyzeDeterministic(conversationalInput, {
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(result.confidence).toBe(1);
+    expect(result.recommendation).not.toBe('manual-review');
+  });
+
+  it('does not turn compensation or application-form fields into unsupported claims', () => {
+    const hostedApplicationInput: DeterministicAnalysisInput = {
+      ...input,
+      job: {
+        ...job,
+        id: 'job-hosted-application-analysis',
+        text: [
+          'What do we need from you?',
+          '- Experience building Node.js services.',
+          'Tier 1 Salary Hiring Range',
+          '$190,000 - $230,000 USD',
+          'Apply for this job',
+          'What is your preferred programming language? *',
+        ].join('\n'),
+      },
+    };
+
+    const result = analyzeDeterministic(hostedApplicationInput, {
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(result.unsupportedClaims).toEqual([]);
+    expect(result.matchedRequirements).toHaveLength(1);
+  });
+
   it('keeps hard blockers separate and forces a skip recommendation', () => {
     const blockedInput: DeterministicAnalysisInput = {
       ...input,

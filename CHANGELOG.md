@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.5.1 - 2026-08-03
+
+Deterministic accuracy and safety fixes for job URL fetching, structured HTML extraction, and core
+requirement matching. Analysis behavior changed; the analysis envelope and CLI contracts are
+unchanged.
+
+### URL and extraction safety
+
+- Rejected job URL destinations that are loopback, private, link-local, or carry embedded
+  credentials, and validated every redirect destination before following it.
+- Enforced one total fetch deadline across redirects and body reads, and returned stable errors for
+  authentication failures, server errors, and removed or unavailable postings.
+- Flagged blocked pages (access-denied, captcha, and bot-verification screens) as failed fetches
+  instead of analyzing their boilerplate.
+- Marked unverifiable hostnames as `unknown` source classification instead of assuming an official
+  employer posting.
+- Replaced the fragile regular-expression HTML flattening with a `parse5`-based structural
+  extractor that selects the matching `JobPosting` JSON-LD, excludes forms, navigation, footers,
+  and sidebars, and preserves structured salary and location lines.
+
+### Deterministic core accuracy
+
+- Read requested experience ranges (`7-10 years`, `7 to 10 years`) at their minimum bound so a
+  range never claims more experience than the posting demands.
+- Normalized generic multiword responsibilities only when the versioned taxonomy defines them;
+  unrecognized multiword requirements stay unnormalized and require manual review instead of being
+  reported as missing experience.
+- Added taxonomy coverage for reviewed concepts (Problem solving, Distributed APIs, LLM, SaaS,
+  Microservices, Service-oriented architecture, and AI coding assistants) and made ambiguous short
+  aliases such as `Go` case-sensitive while spelled-out forms like `Golang` remain case-insensitive.
+- Kept salary ranges, tiered compensation, benefits, and hosted application-form fields out of
+  requirement extraction.
+- Recognized conversational requirement headings such as "What do we need from you?" as required
+  qualifications without lowering confidence.
+- Used no-sponsorship wording consistently between evidence matching and hard blockers, including
+  "sponsorship is not offered" and "we do not offer sponsorship" forms.
+- Allowed an explicit years-of-experience claim that names the same skill (for example `14+ years
+of TypeScript experience`) to satisfy a requested duration, while year-only boundary dates are
+  still never inferred as full durations.
+
 ## 0.5.0 - 2026-08-02
 
 RoleProof's job URL source analysis release for bounded URL fetching, source classification, ATS

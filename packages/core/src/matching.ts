@@ -11,7 +11,7 @@ import {
   type SkillRelationshipData,
 } from '@roleproof/shared';
 
-import { assessClearanceRequirement } from './blockers.js';
+import { assessClearanceRequirement, requiresNoSponsorship } from './blockers.js';
 import { MAX_EVIDENCE_REFERENCES_PER_MATCH } from './config.js';
 import { findSkillRelationship } from './normalization.js';
 import { compareStableStrings } from './ordering.js';
@@ -126,9 +126,6 @@ function supportingEligibilityValues(
       );
     }
     if (requirement.category === 'authorization') {
-      const requiresNoSponsorship = /\b(?:without|no)\s+(?:visa\s+)?sponsorship\b/iu.test(
-        requirement.text,
-      );
       const explicitlyUnauthorized =
         /\b(?:not(?:\s+currently)?|never)\s+authorized\b|\bunauthorized\b|\b(?:requires?|needs?)\s+sponsorship\b/iu.test(
           value,
@@ -142,7 +139,7 @@ function supportingEligibilityValues(
         !explicitlyUnauthorized &&
         explicitlyAuthorized &&
         (requiredJurisdiction === undefined || candidateJurisdiction === requiredJurisdiction) &&
-        (requiresNoSponsorship
+        (requiresNoSponsorship(requirement.text)
           ? /\b(?:without|no)\s+(?:visa\s+)?sponsorship\b/iu.test(value)
           : containsPhrase(requirement.text, value))
       );
@@ -163,19 +160,60 @@ function supportingEligibilityValues(
   });
 }
 
-function supportsRequestedDuration(evidence: CareerEvidence[], yearsRequested: number): boolean {
+function explicitYearsClaimed(
+  evidence: CareerEvidence,
+): { claimed: number; trailing: string } | undefined {
+  const text = evidence.sourceText ?? '';
+  const rangeMatch = /\b(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*\d+(?:\.\d+)?\s*\+?\s*years?\b/iu.exec(
+    text,
+  );
+  if (rangeMatch?.index !== undefined && rangeMatch[1] !== undefined) {
+    const claimed = Number.parseFloat(rangeMatch[1]);
+    if (Number.isFinite(claimed) && claimed >= 0) {
+      return { claimed, trailing: text.slice(rangeMatch.index + rangeMatch[0].length) };
+    }
+  }
+  const claimMatch = /\b(\d+(?:\.\d+)?)\s*\+?\s*years?\b/iu.exec(text);
+  if (claimMatch?.index !== undefined && claimMatch[1] !== undefined) {
+    const claimed = Number.parseFloat(claimMatch[1]);
+    if (Number.isFinite(claimed) && claimed >= 0) {
+      return { claimed, trailing: text.slice(claimMatch.index + claimMatch[0].length) };
+    }
+  }
+  return undefined;
+}
+
+function supportsRequestedDuration(
+  evidence: CareerEvidence[],
+  yearsRequested: number,
+  skillName: string,
+): boolean {
   return evidence.some((item) => {
     const startYear =
       item.startDate === undefined ? undefined : Number.parseInt(item.startDate, 10);
     const endYear = item.endDate === undefined ? undefined : Number.parseInt(item.endDate, 10);
-    return (
+    if (
       startYear !== undefined &&
       endYear !== undefined &&
       Number.isFinite(startYear) &&
       Number.isFinite(endYear) &&
       endYear >= startYear &&
       endYear - startYear > yearsRequested
-    );
+    ) {
+      return true;
+    }
+    const claimed = explicitYearsClaimed(item);
+    if (claimed === undefined || claimed.claimed < yearsRequested) {
+      return false;
+    }
+    const phrase = (claimed.trailing.split(/[.;]/u, 1)[0] ?? claimed.trailing).trim();
+    if (phrase.length === 0) {
+      return false;
+    }
+    return new RegExp(
+      `^\\s*(?:of\\s+)?(?:experience\\s+)?(?:with\\s+|in\\s+|using\\s+|working\\s+with\\s+|building\\s+)?(?<![\\p{L}\\p{N}.])${escapeRegularExpression(skillName)}(?![\\p{L}\\p{N}])`,
+      'iu',
+    ).test(phrase);
   });
 }
 
@@ -258,7 +296,7 @@ export function matchEvidence(
       if (directEvidence.length > 0) {
         if (
           requirement.yearsRequested !== undefined &&
-          !supportsRequestedDuration(directEvidence, requirement.yearsRequested)
+          !supportsRequestedDuration(directEvidence, requirement.yearsRequested, requirementName)
         ) {
           return createMatch(
             requirement,
@@ -320,6 +358,7 @@ export function matchEvidence(
           !supportsRequestedDuration(
             supportingEvidence.map((candidate) => candidate.evidence),
             requirement.yearsRequested,
+            requirementName,
           );
         const classification = durationUnverified ? 'partially-related' : configuredClassification;
         const durationExplanation = durationUnverified

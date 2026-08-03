@@ -198,23 +198,35 @@ export function assessClearanceRequirement(
   return { status: 'supported', supportingValues: matchingValues };
 }
 
+export function requiresNoSponsorship(text: string): boolean {
+  return (
+    /\b(?:without|no)\s+(?:visa\s+)?sponsorship\b/iu.test(text) ||
+    /\b(?:does\s+not|do\s+not|will\s+not|cannot|can't)\s+(?:offer|provide|support|sponsor)\b.{0,40}\bsponsorship\b/iu.test(
+      text,
+    ) ||
+    /\bsponsorship\s+(?:is\s+)?not\s+(?:offered|available|provided|supported)\b/iu.test(text)
+  );
+}
+
 function requiredLines(
   requirements: JobRequirement[],
   lines: string[],
   category: JobRequirement['category'],
-  textPattern: RegExp,
+  textPattern: RegExp | ((text: string) => boolean),
 ): string[] {
+  const matchesPattern = (text: string): boolean =>
+    textPattern instanceof RegExp ? textPattern.test(text) : textPattern(text);
   const structured = requirements
     .filter(
       (requirement) =>
         requirement.importance === 'required' &&
         requirement.category === category &&
-        textPattern.test(requirement.text),
+        matchesPattern(requirement.text),
     )
     .map((requirement) => requirement.text);
   return structured.length > 0
     ? structured.sort(compareStableStrings)
-    : lines.filter((line) => isMandatory(line) && textPattern.test(line)).sort();
+    : lines.filter((line) => isMandatory(line) && matchesPattern(line)).sort();
 }
 
 function hasUnsupportedRequiredLine(
@@ -241,12 +253,7 @@ export function detectHardBlockers(
   if (
     context.workAuthorization !== undefined &&
     /\b(requires?|needs?)\s+sponsorship\b/iu.test(context.workAuthorization) &&
-    requiredLines(
-      requirements,
-      lines,
-      'authorization',
-      /\b(without|no)\s+(?:visa\s+)?sponsorship\b/iu,
-    ).length > 0
+    requiredLines(requirements, lines, 'authorization', requiresNoSponsorship).length > 0
   ) {
     blockers.push('Work authorization mismatch: the role does not allow required sponsorship.');
   }

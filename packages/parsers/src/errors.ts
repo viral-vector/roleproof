@@ -15,6 +15,7 @@ export type ParserErrorCode =
   | 'removed-unavailable'
   | 'size-limit'
   | 'url-invalid'
+  | 'url-unsafe-destination'
   | 'url-unsupported-protocol'
   | 'unsupported-format';
 

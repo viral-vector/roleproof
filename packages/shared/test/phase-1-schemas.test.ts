@@ -254,6 +254,29 @@ describe('normalization data schemas', () => {
     ).toBe(false);
   });
 
+  it('accepts optional case-sensitive matching metadata with exact boolean values', () => {
+    const caseSensitive = {
+      ...aliases,
+      skills: [
+        {
+          canonicalName: 'Go',
+          category: 'language',
+          aliases: ['Golang'],
+          caseSensitive: true,
+        },
+      ],
+    } as const;
+
+    expect(SkillAliasDataSchema.safeParse(caseSensitive).success).toBe(true);
+    expect(SkillAliasDataSchema.safeParse(aliases).success).toBe(true);
+    expect(
+      SkillAliasDataSchema.safeParse({
+        ...aliases,
+        skills: [{ ...aliases.skills[0], caseSensitive: 'yes' }],
+      }).success,
+    ).toBe(false);
+  });
+
   it('accepts typed directed relationships and rejects self-relations', () => {
     const relationship = {
       schemaVersion: '1.0',

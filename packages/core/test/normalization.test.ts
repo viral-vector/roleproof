@@ -37,6 +37,21 @@ describe('skill normalization', () => {
     expect(mentions.map((mention) => mention.canonicalName)).toEqual(['Node.js']);
   });
 
+  it('requires case-sensitive Go syntax while still accepting Golang', () => {
+    expect(
+      extractSkillMentions(
+        'Built workflows that go from intake to delivery.',
+        DEFAULT_NORMALIZATION_DATA.aliases,
+      ).map((mention) => mention.canonicalName),
+    ).not.toContain('Go');
+    expect(
+      extractSkillMentions(
+        'Built services with Go and Golang.',
+        DEFAULT_NORMALIZATION_DATA.aliases,
+      ).map((mention) => mention.canonicalName),
+    ).toContain('Go');
+  });
+
   it('deduplicates aliases of the same canonical skill in stable text order', () => {
     const mentions = extractSkillMentions(
       'TS and TypeScript with Postgres and PostgreSQL.',

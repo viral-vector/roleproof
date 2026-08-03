@@ -249,6 +249,11 @@ function headingImportance(
   if (/^(required qualifications?|requirements?|must have)$/u.test(normalized)) {
     return 'required';
   }
+  if (
+    /^(?:what do we need from you\??|what you(?:'|’)ll bring|what you bring)$/u.test(normalized)
+  ) {
+    return 'required';
+  }
   if (/^(preferred qualifications?|preferred experience|nice to have|bonus)$/u.test(normalized)) {
     return 'preferred';
   }
@@ -310,9 +315,18 @@ function genericRequirementName(line: string): string {
 }
 
 function isContextualMetadata(line: string): boolean {
-  return /^(?:(?:the\s+)?salary(?:\s+range)?|base\s+(?:pay|salary)|compensation|pay\s+range|benefits?|perks?|what\s+we\s+offer|what\s+we\s+provide|location|workplace|work\s+arrangement|about(?:\s+us|\s+the\s+company)?)(?:\s*:|\s+is\b|$)/iu.test(
-    line.trim(),
+  const normalized = line.trim();
+  return (
+    /^(?:(?:the\s+)?salary(?:\s+range)?|base\s+(?:pay|salary)|compensation|pay\s+range|benefits?|perks?|what\s+we\s+offer|what\s+we\s+provide|location|workplace|work\s+arrangement|about(?:\s+us|\s+the\s+company)?)(?:\s*:|\s+is\b|$)/iu.test(
+      normalized,
+    ) ||
+    /^tier\s+\d+\s+salary\s+hiring\s+range$/iu.test(normalized) ||
+    /^(?:[$€£]\s*)?\d[\d,.]*\s*[-–]\s*(?:[$€£]\s*)?\d[\d,.]*(?:\s+[A-Z]{3})?$/u.test(normalized)
   );
+}
+
+function isApplicationFormStart(line: string): boolean {
+  return /^apply\s+for\s+this\s+job$/iu.test(line.trim());
 }
 
 function requirementClauses(line: string): string[] {
@@ -342,12 +356,21 @@ function requestedYears(
   mentionIndex?: number,
   mentionLength = 0,
 ): number | undefined {
-  const matches = [...line.matchAll(/\b(\d+(?:\.\d+)?)\+?\s+years?\b/giu)];
-  const match =
+  const candidates = [
+    ...line.matchAll(
+      /\b(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*\d+(?:\.\d+)?\+?\s+years?\b|\b(\d+(?:\.\d+)?)\+?\s+years?\b/giu,
+    ),
+  ]
+    .map((candidate) => ({
+      candidate,
+      value: Number.parseFloat(candidate[1] ?? candidate[2] ?? 'NaN'),
+    }))
+    .filter(({ value }) => Number.isFinite(value) && value >= 0);
+  const chosen =
     mentionIndex === undefined
-      ? matches[0]
-      : matches
-          .map((candidate) => {
+      ? candidates[0]
+      : candidates
+          .map(({ candidate, value }) => {
             const candidateIndex = candidate.index ?? 0;
             const candidateEnd = candidateIndex + candidate[0].length;
             const mentionEnd = mentionIndex + mentionLength;
@@ -357,18 +380,14 @@ function requestedYears(
                 : candidateIndex >= mentionEnd
                   ? candidateIndex - mentionEnd
                   : 0;
-            return { candidate, distance };
+            return { candidate, value, distance };
           })
           .sort(
             (left, right) =>
               left.distance - right.distance ||
               (left.candidate.index ?? 0) - (right.candidate.index ?? 0),
-          )[0]?.candidate;
-  if (match?.[1] === undefined) {
-    return undefined;
-  }
-  const value = Number.parseFloat(match[1]);
-  return Number.isFinite(value) && value >= 0 ? value : undefined;
+          )[0];
+  return chosen?.value;
 }
 
 export function extractJobRequirements(
@@ -390,6 +409,9 @@ export function extractJobRequirements(
       section = heading;
       foundHeading = true;
       continue;
+    }
+    if (isApplicationFormStart(withoutBullet)) {
+      break;
     }
     if (isContextualMetadata(withoutBullet)) {
       section = undefined;

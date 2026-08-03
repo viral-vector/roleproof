@@ -101,7 +101,7 @@ export function classifyJobSource(
         ? 'aggregator'
         : isRecruiter(hostname)
           ? 'recruiter'
-          : 'official-employer';
+          : 'unknown';
 
   const warnings = [];
   if (removedOrUnavailable) {
@@ -110,10 +110,10 @@ export function classifyJobSource(
       message: 'The page appears to be removed or unavailable.',
     });
   }
-  if (sourceClassification === 'official-employer' && atsProvider !== 'unknown') {
+  if (sourceClassification === 'unknown') {
     warnings.push({
       code: 'low-text-content',
-      message: 'Source classification is based on hostname heuristics only.',
+      message: 'The source could not be verified as an employer, recruiter, aggregator, or ATS.',
     });
   }
 
@@ -126,7 +126,13 @@ export function classifyJobSource(
     sourceClassification,
     atsProvider,
     removedOrUnavailable,
-    confidence: removedOrUnavailable ? 0.95 : sourceClassification === 'official-ats' ? 0.95 : 0.6,
+    confidence: removedOrUnavailable
+      ? 0.95
+      : sourceClassification === 'official-ats'
+        ? 0.95
+        : sourceClassification === 'unknown'
+          ? 0.5
+          : 0.6,
     warnings,
   });
 }

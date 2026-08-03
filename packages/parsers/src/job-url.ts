@@ -9,7 +9,7 @@ import {
 } from '@roleproof/shared';
 
 import { DEFAULT_PARSER_CONFIG } from './config.js';
-import { extractHtmlText } from './html.js';
+import { extractHtmlText, extractJobPageText } from './html.js';
 import { ParserError } from './errors.js';
 import { classifyJobSource } from './job-source.js';
 import { parsePlaintext } from './plaintext.js';
@@ -35,6 +35,76 @@ function isAllowedProtocol(url: URL): boolean {
   return url.protocol === 'https:' || url.protocol === 'http:';
 }
 
+function isPrivateIpv4(hostname: string): boolean {
+  const parts = hostname.split('.').map((part) => Number.parseInt(part, 10));
+  if (
+    parts.length !== 4 ||
+    parts.some((part, index) => !/^\d{1,3}$/u.test(hostname.split('.')[index] ?? '') || part > 255)
+  ) {
+    return false;
+  }
+  const [first = 0, second = 0] = parts;
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 100 && second >= 64 && second <= 127) ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    first >= 224
+  );
+}
+
+function isUnsafeHostname(value: string): boolean {
+  const hostname = value
+    .replace(/^\[|\]$/gu, '')
+    .replace(/\.$/u, '')
+    .toLocaleLowerCase('en-US');
+  if (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname === 'metadata.google.internal' ||
+    isPrivateIpv4(hostname)
+  ) {
+    return true;
+  }
+  if (!hostname.includes(':')) return false;
+  const normalized = hostname.replace(/^0+(?=[\da-f])/gu, '');
+  return (
+    normalized === '::' ||
+    normalized === '::1' ||
+    /^f[cd]/u.test(normalized) ||
+    /^fe[89ab]/u.test(normalized) ||
+    normalized.startsWith('::ffff:127.') ||
+    normalized.startsWith('::ffff:10.') ||
+    normalized.startsWith('::ffff:192.168.')
+  );
+}
+
+function validateFetchUrl(value: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new ParserError('url-invalid', `Job URL is invalid: ${value}`);
+  }
+  if (!isAllowedProtocol(parsed)) {
+    throw new ParserError(
+      'url-unsupported-protocol',
+      `Unsupported job URL protocol: ${parsed.protocol}`,
+    );
+  }
+  if (
+    parsed.username.length > 0 ||
+    parsed.password.length > 0 ||
+    isUnsafeHostname(parsed.hostname)
+  ) {
+    throw new ParserError('url-unsafe-destination', 'Job URL destination is not allowed.');
+  }
+  return parsed;
+}
+
 function isHtmlContentType(value: string | undefined): boolean {
   if (value === undefined) return true;
   const normalized = value.toLocaleLowerCase('en-US');
@@ -45,9 +115,31 @@ function isHtmlContentType(value: string | undefined): boolean {
   );
 }
 
-async function readBoundedResponseBody(response: Response, maxBytes: number): Promise<Uint8Array> {
+function timeoutError(timeoutMs: number): ParserError {
+  return new ParserError('fetch-timeout', `Job fetch timed out after ${timeoutMs}ms.`);
+}
+
+function waitWithSignal<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+  timeoutMs: number,
+): Promise<T> {
+  if (signal.aborted) return Promise.reject(timeoutError(timeoutMs));
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(timeoutError(timeoutMs));
+    signal.addEventListener('abort', abort, { once: true });
+    void promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+async function readBoundedResponseBody(
+  response: Response,
+  maxBytes: number,
+  signal: AbortSignal,
+  timeoutMs: number,
+): Promise<Uint8Array> {
   if (response.body === null) {
-    const body = new Uint8Array(await response.arrayBuffer());
+    const body = new Uint8Array(await waitWithSignal(response.arrayBuffer(), signal, timeoutMs));
     if (body.byteLength > maxBytes) {
       throw new ParserError('fetch-size-limit', `Job page exceeds the ${maxBytes}-byte limit.`);
     }
@@ -60,7 +152,7 @@ async function readBoundedResponseBody(response: Response, maxBytes: number): Pr
 
   try {
     for (;;) {
-      const result = await reader.read();
+      const result = await waitWithSignal(reader.read(), signal, timeoutMs);
       if (result.done) break;
       const value = result.value;
       if (total + value.byteLength > maxBytes) {
@@ -85,22 +177,19 @@ async function readBoundedResponseBody(response: Response, maxBytes: number): Pr
 async function fetchOnce(
   requestUrl: string,
   fetchImpl: typeof fetch,
+  signal: AbortSignal,
   timeoutMs: number,
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetchImpl(requestUrl, {
       redirect: 'manual',
-      signal: controller.signal,
+      signal,
     });
   } catch (error) {
-    if ((error as { name?: string }).name === 'AbortError') {
-      throw new ParserError('fetch-timeout', `Job fetch timed out after ${timeoutMs}ms.`);
+    if (signal.aborted || (error as { name?: string }).name === 'AbortError') {
+      throw timeoutError(timeoutMs);
     }
     throw new ParserError('fetch-failed', `Unable to fetch job URL: ${requestUrl}`);
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -109,60 +198,71 @@ async function fetchBounded(
   config: ParserConfig,
   fetchImpl: typeof fetch,
 ): Promise<FetchResult> {
-  let parsed: URL;
-  try {
-    parsed = new URL(inputUrl);
-  } catch {
-    throw new ParserError('url-invalid', `Job URL is invalid: ${inputUrl}`);
-  }
-  if (!isAllowedProtocol(parsed)) {
-    throw new ParserError(
-      'url-unsupported-protocol',
-      `Unsupported job URL protocol: ${parsed.protocol}`,
-    );
-  }
-
+  const parsed = validateFetchUrl(inputUrl);
   let currentUrl = parsed.toString();
   let redirects = 0;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.urlTimeoutMs);
 
-  for (;;) {
-    const response = await fetchOnce(currentUrl, fetchImpl, config.urlTimeoutMs);
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('location');
-      if (location === null) {
+  try {
+    for (;;) {
+      validateFetchUrl(currentUrl);
+      const response = await fetchOnce(
+        currentUrl,
+        fetchImpl,
+        controller.signal,
+        config.urlTimeoutMs,
+      );
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (location === null) {
+          throw new ParserError(
+            'fetch-failed',
+            `Redirect from ${currentUrl} was missing a location header.`,
+          );
+        }
+        redirects += 1;
+        if (redirects > config.maxUrlRedirects) {
+          throw new ParserError(
+            'fetch-redirect-limit',
+            `Job URL exceeded the ${config.maxUrlRedirects}-redirect limit.`,
+          );
+        }
+        currentUrl = validateFetchUrl(new URL(location, currentUrl).toString()).toString();
+        continue;
+      }
+
+      if (response.status === 404 || response.status === 410) {
+        throw new ParserError(
+          'removed-unavailable',
+          `The job page appears to be removed or unavailable: ${currentUrl}`,
+        );
+      }
+      if (response.status < 200 || response.status >= 300) {
         throw new ParserError(
           'fetch-failed',
-          `Redirect from ${currentUrl} was missing a location header.`,
+          `Job URL returned HTTP ${response.status}: ${currentUrl}`,
         );
       }
-      redirects += 1;
-      if (redirects > config.maxUrlRedirects) {
+
+      const contentType = response.headers.get('content-type') ?? undefined;
+      if (!isHtmlContentType(contentType)) {
         throw new ParserError(
-          'fetch-redirect-limit',
-          `Job URL exceeded the ${config.maxUrlRedirects}-redirect limit.`,
+          'content-type-unsupported',
+          `Unsupported job content type: ${contentType ?? 'unknown'}`,
         );
       }
-      currentUrl = new URL(location, currentUrl).toString();
-      continue;
-    }
 
-    const contentType = response.headers.get('content-type') ?? undefined;
-    if (!isHtmlContentType(contentType)) {
-      throw new ParserError(
-        'content-type-unsupported',
-        `Unsupported job content type: ${contentType ?? 'unknown'}`,
+      const bytes = await readBoundedResponseBody(
+        response,
+        config.maxUrlBytes,
+        controller.signal,
+        config.urlTimeoutMs,
       );
+      return { url: currentUrl, status: response.status, contentType, bytes };
     }
-
-    if (response.status === 404 || response.status === 410) {
-      throw new ParserError(
-        'removed-unavailable',
-        `The job page appears to be removed or unavailable: ${currentUrl}`,
-      );
-    }
-
-    const bytes = await readBoundedResponseBody(response, config.maxUrlBytes);
-    return { url: currentUrl, status: response.status, contentType, bytes };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -172,6 +272,12 @@ function normalizeExtractedText(value: string): string {
     .replace(/[\t ]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function isLikelyBlockedPage(text: string): boolean {
+  return /\b(?:access denied|verify you are human|captcha|sign in to continue|just a moment)\b/iu.test(
+    text,
+  );
 }
 
 export async function parseJobUrlWithMetadata(
@@ -185,7 +291,7 @@ export async function parseJobUrlWithMetadata(
   });
   const fetched = await fetchBounded(url, validatedConfig, fetchImpl);
   const rawText = new TextDecoder('utf-8', { fatal: false }).decode(fetched.bytes);
-  const contentText = rawText.includes('<') ? extractHtmlText(rawText) : rawText;
+  const contentText = rawText.includes('<') ? extractJobPageText(rawText, fetched.url) : rawText;
   const normalizedText = normalizeExtractedText(contentText);
 
   if (normalizedText.length === 0) {
@@ -195,7 +301,17 @@ export async function parseJobUrlWithMetadata(
     );
   }
 
-  const source = classifyJobSource(url, fetched.url, normalizedText, fetched.status);
+  const sourceText = rawText.includes('<') ? extractHtmlText(rawText) : normalizedText;
+  if (isLikelyBlockedPage(sourceText)) {
+    throw new ParserError('fetch-failed', 'The job page appears to be blocked or require sign-in.');
+  }
+  const source = classifyJobSource(url, fetched.url, sourceText, fetched.status);
+  if (source.removedOrUnavailable) {
+    throw new ParserError(
+      'removed-unavailable',
+      'The job page appears to be removed or unavailable.',
+    );
+  }
   const warnings = [...source.warnings];
   if (
     fetched.contentType !== undefined &&
@@ -209,6 +325,7 @@ export async function parseJobUrlWithMetadata(
 
   const metadata = JobRetrievalMetadataSchema.parse({
     ...source,
+    ...(fetched.contentType === undefined ? {} : { contentType: fetched.contentType }),
     warnings,
   });
 

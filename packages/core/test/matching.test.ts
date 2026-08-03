@@ -160,6 +160,27 @@ describe('matchEvidence', () => {
     expect(match?.explanation).toContain('duration requires confirmation');
   });
 
+  it('accepts an explicit years-of-experience claim for the same canonical skill', () => {
+    const [match] = matchEvidence(
+      [{ ...requirements[0]!, id: 'requirement-explicit-years', yearsRequested: 7 }],
+      [
+        {
+          ...evidence[0]!,
+          id: 'evidence-explicit-years',
+          sourceText: '14+ years of TypeScript experience.',
+        },
+      ],
+      DEFAULT_NORMALIZATION_DATA.relationships,
+    );
+
+    expect(match).toEqual(
+      expect.objectContaining({
+        classification: 'direct',
+        evidenceIds: ['evidence-explicit-years'],
+      }),
+    );
+  });
+
   it('does not award a strong related match for unverified requested duration', () => {
     const [durationMatch] = matchEvidence(
       [

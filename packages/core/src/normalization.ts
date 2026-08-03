@@ -17,10 +17,14 @@ function escapeRegularExpression(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function findTerm(text: string, term: string): { index: number; matchedText: string } | undefined {
+function findTerm(
+  text: string,
+  term: string,
+  caseSensitive = false,
+): { index: number; matchedText: string } | undefined {
   const expression = new RegExp(
     `(?<![\\p{L}\\p{N}.])${escapeRegularExpression(term)}(?![\\p{L}\\p{N}])`,
-    'iu',
+    caseSensitive ? 'u' : 'iu',
   );
   const match = expression.exec(text);
   if (match?.index === undefined || match[0] === undefined) {
@@ -30,10 +34,13 @@ function findTerm(text: string, term: string): { index: number; matchedText: str
 }
 
 export function normalizeSkillName(name: string, data: SkillAliasData): string | undefined {
-  const key = comparisonKey(name);
   for (const skill of data.skills) {
+    const caseSensitive = skill.caseSensitive === true;
+    const key = caseSensitive ? name.trim() : comparisonKey(name);
     if (
-      [skill.canonicalName, ...skill.aliases].some((candidate) => comparisonKey(candidate) === key)
+      [skill.canonicalName, ...skill.aliases].some((candidate) =>
+        caseSensitive ? candidate === key : comparisonKey(candidate) === key,
+      )
     ) {
       return skill.canonicalName;
     }
@@ -47,7 +54,7 @@ export function extractSkillMentions(text: string, data: SkillAliasData): SkillM
   for (const skill of data.skills) {
     let earliest: { index: number; matchedText: string } | undefined;
     for (const name of [skill.canonicalName, ...skill.aliases]) {
-      const found = findTerm(text, name);
+      const found = findTerm(text, name, skill.caseSensitive === true);
       if (found !== undefined && (earliest === undefined || found.index < earliest.index)) {
         earliest = found;
       }
