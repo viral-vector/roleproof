@@ -9,7 +9,7 @@ import {
 } from '@roleproof/shared';
 
 import { DEFAULT_PARSER_CONFIG } from './config.js';
-import { extractHtmlText, extractJobPageText } from './html.js';
+import { extractHtmlText, extractJobPageTextWithProvenance } from './html.js';
 import { ParserError } from './errors.js';
 import { classifyJobSource } from './job-source.js';
 import { parsePlaintext } from './plaintext.js';
@@ -291,7 +291,10 @@ export async function parseJobUrlWithMetadata(
   });
   const fetched = await fetchBounded(url, validatedConfig, fetchImpl);
   const rawText = new TextDecoder('utf-8', { fatal: false }).decode(fetched.bytes);
-  const contentText = rawText.includes('<') ? extractJobPageText(rawText, fetched.url) : rawText;
+  const extraction = rawText.includes('<')
+    ? extractJobPageTextWithProvenance(rawText, fetched.url)
+    : undefined;
+  const contentText = extraction?.text ?? rawText;
   const normalizedText = normalizeExtractedText(contentText);
 
   if (normalizedText.length === 0) {
@@ -320,6 +323,20 @@ export async function parseJobUrlWithMetadata(
     warnings.push({
       code: 'non-html-content',
       message: 'The fetched job page did not advertise HTML content.',
+    });
+  }
+  if (extraction?.method === 'semantic') {
+    warnings.push({
+      code: 'semantic-extraction',
+      message:
+        'Job content came from a generic main or article section, not a recognized job posting structure.',
+    });
+  }
+  if (extraction?.method === 'fallback') {
+    warnings.push({
+      code: 'generic-extraction',
+      message:
+        'Job content was extracted from the whole page; requirements may include unrelated page text.',
     });
   }
 

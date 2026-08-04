@@ -113,9 +113,13 @@ byte, page, image, and timeout limits before or during extraction. PDF.js resour
 after completion and on timeout. DOCX text is extracted in memory from the ZIP package with no
 external Office process. Jobs accept plaintext or bounded HTTP(S) pages; resumes accept plaintext,
 PDF, and DOCX. URL-backed jobs use a layered deterministic extractor: `JobPosting` JSON-LD first,
-small Greenhouse/Lever/Ashby container adapters second, semantic `main`/`article` content third, and
-a sanitized whole-page fallback last. Forms, navigation, footers, and other page chrome are removed
-before requirement extraction.
+description-region container heuristics (IDs, `data-qa`, `itemprop`, and description classes, plus
+a Greenhouse `#content` fallback) second, semantic `main`/`article` content third, and a sanitized
+whole-page fallback last. Forms, navigation, footers, and other page chrome are removed before
+requirement extraction. Extraction provenance is recorded on the job source: the method
+(`json-ld`, `container`, `semantic`, or `fallback`) is surfaced alongside warnings, and
+generic-region (`semantic-extraction`) or whole-page (`generic-extraction`) extraction lowers
+consumer confidence instead of pretending the structure was clean.
 
 ### Reporters
 

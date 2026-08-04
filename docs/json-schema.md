@@ -123,6 +123,11 @@ URL-backed analyses include `analysis.metadata.jobSource` when retrieval succeed
 `workday`, `icims`, `smartrecruiters`, `bamboohr`, `workable`, `oracle`, `successfactors`, or
 `unknown`. Removed or unavailable pages are rejected before analysis.
 
+`warnings` entries use stable codes. Extraction-quality codes include `non-html-content`,
+`low-text-content`, `semantic-extraction` (requirements came from a generic `main` or `article`
+region rather than a structured container), and `generic-extraction` (requirements were pulled
+from the whole page because no structured region was found).
+
 When the server has storage, analyzed inputs and results are persisted and exposed through history
 routes. `GET /api/history` returns a `LocalHistoryListResponseSchema` envelope:
 

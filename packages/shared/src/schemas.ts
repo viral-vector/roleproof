@@ -241,6 +241,7 @@ export const AtsProviderSchema = z.enum([
   'lever',
   'workday',
   'ashby',
+  'icims',
   'paylocity',
   'rippling',
   'jazzhr',
@@ -261,6 +262,8 @@ export const JobSourceWarningCodeSchema = z.enum([
   'timeout',
   'fetch-failed',
   'invalid-url',
+  'semantic-extraction',
+  'generic-extraction',
 ]);
 
 export const JobSourceWarningSchema = z

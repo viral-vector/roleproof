@@ -19,6 +19,15 @@ unchanged.
 - Replaced the fragile regular-expression HTML flattening with a `parse5`-based structural
   extractor that selects the matching `JobPosting` JSON-LD, excludes forms, navigation, footers,
   and sidebars, and preserves structured salary and location lines.
+- Reported extraction provenance on the job source: the extractor's method (`json-ld`, `container`,
+  `semantic`, or `fallback`) is recorded, and a `semantic-extraction` or `generic-extraction`
+  warning is emitted when requirements were pulled from a generic page region or the whole
+  document, so lower-confidence extraction is visible to consumers instead of hidden.
+- Added an ATS accuracy corpus covering Greenhouse, Lever, Ashby, Workday, iCIMS, and a generic
+  careers page: fixtures prove the same posting extracts to the same requirements, matches,
+  blockers, and recommendation across platforms with no page chrome in the text.
+- Added iCIMS hostname detection to ATS provider classification and widened the `job_sources`
+  `ats_provider` constraint via a new storage migration (0008) that preserves existing rows.
 
 ### Deterministic core accuracy
 
@@ -28,8 +37,11 @@ unchanged.
   unrecognized multiword requirements stay unnormalized and require manual review instead of being
   reported as missing experience.
 - Added taxonomy coverage for reviewed concepts (Problem solving, Distributed APIs, LLM, SaaS,
-  Microservices, Service-oriented architecture, and AI coding assistants) and made ambiguous short
-  aliases such as `Go` case-sensitive while spelled-out forms like `Golang` remain case-insensitive.
+  Microservices, Service-oriented architecture, and AI coding assistants) and expanded the common
+  skill taxonomy (Python, Java, React, Redis, MongoDB, Kafka, Terraform, Azure, GCP, and
+  Observability) so those skills extract as direct evidence instead of unknown requirements. Made
+  ambiguous short aliases such as `Go` case-sensitive while spelled-out forms like `Golang` remain
+  case-insensitive.
 - Kept salary ranges, tiered compensation, benefits, and hosted application-form fields out of
   requirement extraction.
 - Recognized conversational requirement headings such as "What do we need from you?" as required

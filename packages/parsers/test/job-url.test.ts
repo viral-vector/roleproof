@@ -266,6 +266,86 @@ describe('parseJobUrlWithMetadata', () => {
     expect(result.document.text).toContain('TypeScript');
   });
 
+  it('warns when extraction falls back to whole-document text', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        makeResponse(
+          '<html><body><div><h1>Fictional Engineer</h1><p>TypeScript</p></div></body></html>',
+        ),
+      );
+
+    const result = await parseJobUrlWithMetadata(
+      'https://careers.fictional.example/jobs/fallback',
+      {},
+      fetchImpl,
+    );
+
+    expect(result.source.warnings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'generic-extraction' })]),
+    );
+  });
+
+  it('warns when extraction uses a semantic main container without job structure', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        makeResponse(
+          '<html><body><main><h1>Fictional Engineer</h1><p>TypeScript</p></main></body></html>',
+        ),
+      );
+
+    const result = await parseJobUrlWithMetadata(
+      'https://careers.fictional.example/jobs/semantic',
+      {},
+      fetchImpl,
+    );
+
+    expect(result.source.warnings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'semantic-extraction' })]),
+    );
+  });
+
+  it('does not warn for structured JSON-LD or recognized job containers', async () => {
+    const jsonLdFetch = vi.fn().mockResolvedValue(
+      makeResponse(`
+        <html><head><script type="application/ld+json">
+          {"@context":"https://schema.org","@type":"JobPosting","title":"Fictional Engineer","description":"<p>TypeScript</p>"}
+        </script></head><body><div>Unrelated page content</div></body></html>
+      `),
+    );
+    const jsonLd = await parseJobUrlWithMetadata(
+      'https://jobs.ashbyhq.com/fictionalco/abc123',
+      {},
+      jsonLdFetch,
+    );
+
+    expect(jsonLd.source.warnings.map((warning) => warning.code)).not.toContain(
+      'generic-extraction',
+    );
+    expect(jsonLd.source.warnings.map((warning) => warning.code)).not.toContain(
+      'semantic-extraction',
+    );
+
+    const containerFetch = vi.fn().mockResolvedValue(
+      makeResponse(`
+        <html><body><main><section data-qa="job-description"><p>TypeScript</p></section></main></body></html>
+      `),
+    );
+    const container = await parseJobUrlWithMetadata(
+      'https://jobs.lever.co/fictionalco/abc123',
+      {},
+      containerFetch,
+    );
+
+    expect(container.source.warnings.map((warning) => warning.code)).not.toContain(
+      'generic-extraction',
+    );
+    expect(container.source.warnings.map((warning) => warning.code)).not.toContain(
+      'semantic-extraction',
+    );
+  });
+
   it('follows redirects up to the configured limit', async () => {
     const fetchImpl = vi
       .fn()

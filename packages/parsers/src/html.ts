@@ -299,15 +299,35 @@ export function extractHtmlText(html: string): string {
   return normalizeText(textFromNode(fragment, false));
 }
 
-export function extractJobPageText(html: string, url: string): string {
+export type JobPageExtractionMethod = 'json-ld' | 'container' | 'semantic' | 'fallback';
+
+export interface JobPageExtraction {
+  text: string;
+  method: JobPageExtractionMethod;
+}
+
+export function extractJobPageTextWithProvenance(html: string, url: string): JobPageExtraction {
   const document = parseDocument(html);
   const structured = jsonLdText(document, url);
-  if (structured !== undefined) return structured;
+  if (structured !== undefined) {
+    return { text: structured, method: 'json-ld' };
+  }
 
-  const selected =
-    descriptionElement(document, url) ??
+  const container = descriptionElement(document, url);
+  if (container !== undefined) {
+    return { text: normalizeText(textFromNode(container, true)), method: 'container' };
+  }
+
+  const semantic =
     findElement(document, (node) => node.tagName === 'main') ??
-    findElement(document, (node) => node.tagName === 'article') ??
-    document;
-  return normalizeText(textFromNode(selected, true));
+    findElement(document, (node) => node.tagName === 'article');
+  if (semantic !== undefined) {
+    return { text: normalizeText(textFromNode(semantic, true)), method: 'semantic' };
+  }
+
+  return { text: normalizeText(textFromNode(document, true)), method: 'fallback' };
+}
+
+export function extractJobPageText(html: string, url: string): string {
+  return extractJobPageTextWithProvenance(html, url).text;
 }

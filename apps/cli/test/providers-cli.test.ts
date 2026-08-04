@@ -99,9 +99,23 @@ function operationAndInput(init?: RequestInit): {
   const operation =
     body.response_format?.json_schema?.name?.replaceAll('_', '-') ??
     body.text?.format?.name?.replaceAll('_', '-') ??
-    '';
+    findOperation(body.messages);
   const raw = body.messages?.at(-1)?.content ?? body.input?.[1]?.content[0]?.text ?? '';
   return { input: JSON.parse(raw) as Record<string, unknown>, operation };
+}
+
+function findOperation(
+  messages: Array<{ content: string | Array<{ text: string }> }> | undefined,
+): string {
+  if (!Array.isArray(messages)) return '';
+  for (const message of messages) {
+    const content =
+      typeof message?.content === 'string' ? message.content : message.content?.[0]?.text;
+    if (typeof content !== 'string') continue;
+    const match = /\bReturn only a valid JSON object for ([a-z-]+)\./u.exec(content);
+    if (match !== null) return match[1]!;
+  }
+  return '';
 }
 
 async function invoke(args: string[]) {
@@ -491,7 +505,7 @@ describe('Phase 3 provider CLI integration', () => {
     );
     expect(endpointMismatch.exitCode).toBe(5);
     expect(fetchMock).not.toHaveBeenCalled();
-    const modeMismatch = await invoke([...args, '--structured-output-mode', 'json-object']);
+    const modeMismatch = await invoke([...args, '--structured-output-mode', 'json-schema']);
     expect(modeMismatch.exitCode).toBe(5);
     expect(fetchMock).not.toHaveBeenCalled();
 

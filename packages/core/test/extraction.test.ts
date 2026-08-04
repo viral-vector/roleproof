@@ -321,6 +321,30 @@ describe('extractJobRequirements', () => {
     expect(rust?.normalizedName).toBeUndefined();
   });
 
+  it('extracts expanded taxonomy skills symmetrically for jobs and resumes', () => {
+    const taxonomyResume: ParsedDocument = {
+      ...resume,
+      id: 'resume-expanded-taxonomy',
+      text: 'Skills: Python, Redis, Terraform',
+    };
+    expect(
+      extractCareerEvidence(taxonomyResume, DEFAULT_NORMALIZATION_DATA.aliases)
+        .map((item) => item.normalizedName)
+        .sort(),
+    ).toEqual(['Python', 'Redis', 'Terraform']);
+
+    const taxonomyJob: ParsedDocument = {
+      ...job,
+      id: 'job-expanded-taxonomy',
+      text: 'Required Qualifications\n- Python\n- MongoDB\n- Kafka',
+    };
+    expect(
+      extractJobRequirements(taxonomyJob, DEFAULT_NORMALIZATION_DATA.aliases)
+        .requirements.map((requirement) => requirement.normalizedName)
+        .sort(),
+    ).toEqual(['Kafka', 'MongoDB', 'Python']);
+  });
+
   it('recognizes conversational requirements headings without lowering confidence', () => {
     const conversationalJob: ParsedDocument = {
       ...job,

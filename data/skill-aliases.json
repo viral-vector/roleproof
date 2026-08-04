@@ -27,6 +27,11 @@
       "aliases": ["Amazon Web Services"]
     },
     {
+      "canonicalName": "Azure",
+      "category": "infrastructure",
+      "aliases": ["Microsoft Azure"]
+    },
+    {
       "canonicalName": "Backend development",
       "category": "other",
       "aliases": ["backend engineering", "backend experience", "server-side development"]
@@ -62,6 +67,11 @@
       "aliases": ["Express.js"]
     },
     {
+      "canonicalName": "GCP",
+      "category": "infrastructure",
+      "aliases": ["Google Cloud", "Google Cloud Platform"]
+    },
+    {
       "canonicalName": "Go",
       "category": "language",
       "aliases": ["Golang"],
@@ -78,6 +88,11 @@
       "aliases": []
     },
     {
+      "canonicalName": "Java",
+      "category": "language",
+      "aliases": []
+    },
+    {
       "canonicalName": "JavaScript",
       "category": "language",
       "aliases": ["JS"]
@@ -86,6 +101,11 @@
       "canonicalName": "K3s",
       "category": "infrastructure",
       "aliases": []
+    },
+    {
+      "canonicalName": "Kafka",
+      "category": "infrastructure",
+      "aliases": ["Apache Kafka"]
     },
     {
       "canonicalName": "Kubernetes",
@@ -108,6 +128,11 @@
       "aliases": []
     },
     {
+      "canonicalName": "MongoDB",
+      "category": "database",
+      "aliases": ["Mongo"]
+    },
+    {
       "canonicalName": "MySQL",
       "category": "database",
       "aliases": []
@@ -121,6 +146,11 @@
       "canonicalName": "OAuth2",
       "category": "other",
       "aliases": ["OAuth 2", "OAuth 2.0"]
+    },
+    {
+      "canonicalName": "Observability",
+      "category": "other",
+      "aliases": ["o11y"]
     },
     {
       "canonicalName": "OpenID Connect",
@@ -141,6 +171,21 @@
       "canonicalName": "Problem solving",
       "category": "other",
       "aliases": ["problem-solving", "problem solving"]
+    },
+    {
+      "canonicalName": "Python",
+      "category": "language",
+      "aliases": []
+    },
+    {
+      "canonicalName": "React",
+      "category": "framework",
+      "aliases": ["React.js", "ReactJS"]
+    },
+    {
+      "canonicalName": "Redis",
+      "category": "database",
+      "aliases": []
     },
     {
       "canonicalName": "Relational database",
@@ -176,6 +221,11 @@
       "canonicalName": "Team leadership",
       "category": "leadership",
       "aliases": ["team lead", "led a team", "led an engineering team", "mentored engineers"]
+    },
+    {
+      "canonicalName": "Terraform",
+      "category": "infrastructure",
+      "aliases": []
     },
     {
       "canonicalName": "TypeScript",

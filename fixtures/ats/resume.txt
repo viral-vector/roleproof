@@ -1,0 +1,4 @@
+Avery Morgan
+Work authorization: Requires sponsorship
+Skills: TypeScript, Node.js, PostgreSQL
+2020-2026: Built TypeScript services with Node.js and PostgreSQL.

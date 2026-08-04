@@ -235,10 +235,8 @@ onMounted(() => {
         </p>
       </header>
 
-      <p v-if="loading" class="loading-note" role="status">Loading settings...</p>
-
-      <form v-else class="settings-form" @submit.prevent="save">
-        <fieldset class="settings-fieldset">
+      <form class="settings-form" @submit.prevent="save">
+        <fieldset class="settings-fieldset" :disabled="loading">
           <legend>AI enhancement</legend>
           <p class="fieldset-note">
             Optional. Deterministic analysis never requires a provider; these limits apply when AI
@@ -321,7 +319,7 @@ onMounted(() => {
           </div>
         </fieldset>
 
-        <fieldset class="settings-fieldset">
+        <fieldset class="settings-fieldset" :disabled="loading">
           <legend>Redaction</legend>
           <p class="fieldset-note">
             Applied before any hosted provider transmission. Local analysis is unaffected.
@@ -349,7 +347,7 @@ onMounted(() => {
           </div>
         </fieldset>
 
-        <fieldset class="settings-fieldset">
+        <fieldset class="settings-fieldset" :disabled="loading">
           <legend>Output and provider limits</legend>
           <div class="settings-grid">
             <div class="settings-field">
@@ -435,7 +433,7 @@ onMounted(() => {
             <span aria-hidden="true">&bull;</span>
             Database: <code>{{ databasePath }}</code>
           </p>
-          <PrimaryButton :disabled="saving">
+          <PrimaryButton :disabled="saving || loading">
             {{ saving ? 'Saving...' : 'Save settings' }}
           </PrimaryButton>
         </footer>

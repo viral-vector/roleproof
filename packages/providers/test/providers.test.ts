@@ -309,6 +309,42 @@ describe('provider configuration and deterministic input construction', () => {
     expect(created).not.toHaveProperty('apiKey');
   });
 
+  it('defaults openai-compatible to json-object while openai stays json-schema', () => {
+    const compatible = createProviderConfig({
+      provider: 'openai-compatible',
+      model: 'fictional-model',
+      destination: 'local',
+      baseUrl: 'http://localhost:11434/v1',
+    });
+    expect(compatible.structuredOutputMode).toBe('json-object');
+
+    const openai = createProviderConfig({
+      provider: 'openai',
+      model: 'fictional-model',
+      destination: 'hosted',
+    });
+    expect(openai.structuredOutputMode).toBe('json-schema');
+  });
+
+  it('respects explicit json-schema override for openai-compatible, openai stays json-schema', () => {
+    const compatible = createProviderConfig({
+      provider: 'openai-compatible',
+      model: 'fictional-model',
+      destination: 'local',
+      baseUrl: 'http://localhost:11434/v1',
+      structuredOutputMode: 'json-schema',
+    });
+    expect(compatible.structuredOutputMode).toBe('json-schema');
+
+    const openai = createProviderConfig({
+      provider: 'openai',
+      model: 'fictional-model',
+      destination: 'hosted',
+      structuredOutputMode: 'json-schema',
+    });
+    expect(openai.structuredOutputMode).toBe('json-schema');
+  });
+
   it('rejects a cost ceiling without rates at the canonical config boundary', () => {
     expect(() =>
       createProviderConfig({

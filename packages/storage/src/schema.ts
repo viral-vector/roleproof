@@ -76,6 +76,7 @@ export interface JobSourceTable extends TimestampedTable {
     | 'lever'
     | 'workday'
     | 'ashby'
+    | 'icims'
     | 'paylocity'
     | 'rippling'
     | 'jazzhr'

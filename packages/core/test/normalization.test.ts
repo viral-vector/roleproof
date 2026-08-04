@@ -14,8 +14,37 @@ describe('skill normalization', () => {
     ['TS', 'TypeScript'],
     ['RESTful API', 'REST API'],
     ['.NET Core', '.NET'],
+    ['ReactJS', 'React'],
+    ['Mongo', 'MongoDB'],
+    ['Google Cloud Platform', 'GCP'],
+    ['Microsoft Azure', 'Azure'],
+    ['Apache Kafka', 'Kafka'],
+    ['o11y', 'Observability'],
   ])('normalizes %s to %s', (input, expected) => {
     expect(normalizeSkillName(input, DEFAULT_NORMALIZATION_DATA.aliases)).toBe(expected);
+  });
+
+  it('does not match Java inside JavaScript', () => {
+    const mentions = extractSkillMentions(
+      'Built JavaScript services with Node.js.',
+      DEFAULT_NORMALIZATION_DATA.aliases,
+    );
+
+    expect(mentions.map((mention) => mention.canonicalName)).toEqual(['JavaScript', 'Node.js']);
+  });
+
+  it('extracts expanded taxonomy mentions in stable text order', () => {
+    const mentions = extractSkillMentions(
+      'Used Python, Redis, and Terraform on Azure.',
+      DEFAULT_NORMALIZATION_DATA.aliases,
+    );
+
+    expect(mentions.map((mention) => mention.canonicalName)).toEqual([
+      'Python',
+      'Redis',
+      'Terraform',
+      'Azure',
+    ]);
   });
 
   it('uses token boundaries so JS does not match JSON', () => {

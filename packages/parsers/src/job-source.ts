@@ -35,6 +35,7 @@ const ATS_HOSTS = [
   { provider: 'lever', hosts: ['lever.co'] },
   { provider: 'workday', hosts: ['workday.com', 'myworkdayjobs.com', 'workdayjobs.com'] },
   { provider: 'ashby', hosts: ['ashbyhq.com'] },
+  { provider: 'icims', hosts: ['icims.com'] },
   { provider: 'paylocity', hosts: ['paylocity.com'] },
   { provider: 'rippling', hosts: ['rippling.com'] },
   { provider: 'jazzhr', hosts: ['jazzhr.com', 'jazz.co'] },

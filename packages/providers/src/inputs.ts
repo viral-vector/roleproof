@@ -86,7 +86,8 @@ export const createProviderConfig = (input: CreateProviderConfigInput): Provider
         : input.maxCostMicroUsd,
     rates: input.rates ?? DEFAULT_PROVIDER_CONFIG.rates,
     structuredOutputMode:
-      input.structuredOutputMode ?? DEFAULT_PROVIDER_CONFIG.structuredOutputMode,
+      input.structuredOutputMode ??
+      (input.provider === 'openai-compatible' ? 'json-object' : 'json-schema'),
     redaction,
   };
   const parsed = ProviderConfigSchema.safeParse(candidate);
