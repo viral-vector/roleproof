@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
-import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AnalysisEnvelopeSchema } from '@roleproof/shared';
+import { AnalysisEnvelopeSchema, BatchEnvelopeSchema } from '@roleproof/shared';
 import { closeStorage, createRoleProofRepositories, openStorage } from '@roleproof/storage';
 
 import { runCli } from '../src/program.js';
@@ -854,5 +854,352 @@ describe('roleproof analyze stdin inputs', () => {
     expect(result.exitCode).toBe(3);
     expect(result.stdout).toBe('');
     expect(result.stderr).toMatch(/no readable text/i);
+  });
+});
+
+describe('roleproof analyze batch', () => {
+  let directory: string;
+  let manifestDirectory: string;
+  let manifestPath: string;
+  let resumePath: string;
+  let jobPath: string;
+  let otherResumePath: string;
+  let otherJobPath: string;
+
+  beforeEach(async () => {
+    directory = await mkdtemp(join(tmpdir(), 'roleproof batch-'));
+    manifestDirectory = join(directory, 'manifests');
+    await mkdir(manifestDirectory, { recursive: true });
+    manifestPath = join(manifestDirectory, 'batch.json');
+    resumePath = join(directory, 'resume.txt');
+    jobPath = join(directory, 'job.txt');
+    otherResumePath = join(directory, 'other resume.txt');
+    otherJobPath = join(directory, 'other job.txt');
+    await Promise.all([
+      writeFile(resumePath, resumeText, 'utf8'),
+      writeFile(jobPath, jobText, 'utf8'),
+      writeFile(otherResumePath, `${resumeText}\nAdditional fictional project.\n`, 'utf8'),
+      writeFile(otherJobPath, `${jobText}\n- Python\n`, 'utf8'),
+    ]);
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: '1.0',
+        pairs: [
+          { resume: '../resume.txt', job: '../job.txt' },
+          { resume: '../other resume.txt', job: '../other job.txt' },
+        ],
+      }),
+      'utf8',
+    );
+  });
+
+  afterEach(async () => {
+    await rm(directory, { force: true, maxRetries: 3, recursive: true, retryDelay: 50 });
+  });
+
+  it('analyzes every manifest pair in order and returns a batch envelope', async () => {
+    const result = await invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    const envelope = BatchEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(envelope.schemaVersion).toBe('1.0');
+    const [firstPair, secondPair] = envelope.pairs;
+    expect(firstPair).toBeDefined();
+    expect(secondPair).toBeDefined();
+    if (firstPair?.status === 'completed' && secondPair?.status === 'completed') {
+      expect(firstPair.analysis.resumeDocumentId).not.toBe(secondPair.analysis.resumeDocumentId);
+    }
+  });
+
+  it('produces identical envelopes for identical manifests across runs', async () => {
+    const run = async () =>
+      (
+        await invoke([
+          'analyze',
+          '--manifest',
+          manifestPath,
+          '--no-ai',
+          '--no-store',
+          '--format',
+          'json',
+          '--stdout',
+        ])
+      ).stdout;
+    const first = parseJson(await run()) as {
+      pairs: Array<{ analysis?: { generatedAt: string } }>;
+    };
+    const second = parseJson(await run()) as {
+      pairs: Array<{ analysis?: { generatedAt: string } }>;
+    };
+    const strip = (envelope: typeof first) =>
+      envelope.pairs.map((pair) =>
+        pair.analysis === undefined
+          ? pair
+          : { ...pair, analysis: { ...pair.analysis, generatedAt: undefined } },
+      );
+    expect(strip(first)).toEqual(strip(second));
+  });
+
+  it('rejects --manifest combined with --resume', async () => {
+    const result = await invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--resume',
+      resumePath,
+      '--no-ai',
+      '--no-store',
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/manifest/i);
+  });
+
+  it('rejects --manifest combined with --stdin-job', async () => {
+    const result = await invoke(
+      ['analyze', '--manifest', manifestPath, '--stdin-job', '--no-ai', '--no-store'],
+      jobText,
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/manifest/i);
+  });
+
+  it('rejects --manifest combined with provider options', async () => {
+    const result = await invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--provider',
+      'openai',
+      '--model',
+      'gpt-4o-mini',
+      '--no-ai',
+      '--no-store',
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/provider/i);
+  });
+
+  it('rejects --manifest combined with --model alone (no --provider)', async () => {
+    const result = await invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--model',
+      'gpt-4o-mini',
+      '--no-ai',
+      '--no-store',
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/model/i);
+  });
+
+  it('accepts a manifest saved with a UTF-8 byte order mark', async () => {
+    await writeFile(
+      manifestPath,
+      `\uFEFF${JSON.stringify({
+        schemaVersion: '1.0',
+        pairs: [{ resume: '../resume.txt', job: '../job.txt' }],
+      })}`,
+      'utf8',
+    );
+    const result = await invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(BatchEnvelopeSchema.parse(parseJson(result.stdout)).pairs).toHaveLength(1);
+  });
+
+  it('rejects a manifest whose content is not valid JSON', async () => {
+    await writeFile(manifestPath, 'not json {', 'utf8');
+    const result = await invoke(['analyze', '--manifest', manifestPath, '--no-ai', '--no-store']);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/manifest/i);
+  });
+
+  it('rejects a manifest that violates the schema', async () => {
+    await writeFile(
+      manifestPath,
+      JSON.stringify({ schemaVersion: '1.0', pairs: [{ resume: '   ', job: 'job.txt' }] }),
+      'utf8',
+    );
+    const result = await invoke(['analyze', '--manifest', manifestPath, '--no-ai', '--no-store']);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/manifest/i);
+  });
+
+  it('rejects an empty pairs manifest', async () => {
+    await writeFile(manifestPath, JSON.stringify({ schemaVersion: '1.0', pairs: [] }), 'utf8');
+    const result = await invoke(['analyze', '--manifest', manifestPath, '--no-ai', '--no-store']);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/pair/i);
+  });
+
+  it('fails with exit code 3 when a manifest file is missing', async () => {
+    const result = await invoke([
+      'analyze',
+      '--manifest',
+      join(directory, 'missing manifest.json'),
+      '--no-ai',
+      '--no-store',
+    ]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/manifest/i);
+  });
+
+  it('records a failed pair and still completes the remaining pairs', async () => {
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: '1.0',
+        pairs: [
+          { resume: '../resume.txt', job: '../job.txt' },
+          { resume: '../missing resume.txt', job: '../job.txt' },
+          { resume: '../other resume.txt', job: '../other job.txt' },
+        ],
+      }),
+      'utf8',
+    );
+    const result = await invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result.exitCode).toBe(3);
+    const envelope = BatchEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(envelope.pairs.map((pair) => pair.status)).toEqual(['completed', 'failed', 'completed']);
+    const failedPair = envelope.pairs[1];
+    if (failedPair?.status === 'failed') {
+      expect(failedPair.code).toBe(3);
+    }
+  });
+
+  it('rejects --concurrency outside the supported range', async () => {
+    for (const concurrency of ['0', '999']) {
+      const result = await invoke([
+        'analyze',
+        '--manifest',
+        manifestPath,
+        '--concurrency',
+        concurrency,
+        '--no-ai',
+        '--no-store',
+      ]);
+      expect(result.exitCode).toBe(2);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toMatch(/concurrency/i);
+    }
+  });
+
+  it('accepts --concurrency within the supported range', async () => {
+    const result = await invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--concurrency',
+      '2',
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const envelope = BatchEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(envelope.pairs.every((pair) => pair.status === 'completed')).toBe(true);
+  });
+
+  it('stores every analysis when storage is enabled', async () => {
+    const databaseFile = join(directory, 'batch.db');
+    const result = await invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--no-ai',
+      '--db',
+      databaseFile,
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const envelope = BatchEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(envelope.pairs.every((pair) => pair.status === 'completed')).toBe(true);
+    const database = await openStorage({ path: databaseFile });
+    try {
+      const repositories = createRoleProofRepositories(database);
+      expect((await repositories.analyses.listHistory(undefined)).length).toBe(2);
+    } finally {
+      await closeStorage(database);
+    }
+  });
+
+  it('writes per-pair reports to --out and keeps JSON stdout pure', async () => {
+    const outDirectory = join(directory, 'reports');
+    const result = await invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--no-ai',
+      '--no-store',
+      '--out',
+      outDirectory,
+      '--format',
+      'both',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('');
+    const files = (await readdir(outDirectory)).sort();
+    expect(files).toContain('roleproof-batch.json');
+    expect(files).toContain('roleproof-batch.md');
+    expect(files).toContain('roleproof-batch-pair-1.md');
+    expect(files).toContain('roleproof-batch-pair-1.json');
+    expect(files).toContain('roleproof-batch-pair-2.md');
+    expect(files).toContain('roleproof-batch-pair-2.json');
+    const batchJson = await readFile(join(outDirectory, 'roleproof-batch.json'), 'utf8');
+    expect(BatchEnvelopeSchema.parse(JSON.parse(batchJson)).pairs).toHaveLength(2);
   });
 });

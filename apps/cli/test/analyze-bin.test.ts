@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { AnalysisEnvelopeSchema } from '@roleproof/shared';
+import { AnalysisEnvelopeSchema, BatchEnvelopeSchema } from '@roleproof/shared';
 import { createDocx, createPdf } from '@roleproof/test-utils';
 
 const cliEntryPath = fileURLToPath(new URL('../bin/roleproof.js', import.meta.url));
@@ -274,4 +274,82 @@ describe('built roleproof analyze executable', () => {
       readFile(join(fixtureRoot, 'compensation-blocker', 'job.txt'), 'utf8'),
     ).resolves.toContain('USD');
   });
+
+  it('analyzes a batch manifest and returns a pure JSON batch envelope', async () => {
+    const manifestDirectory = join(directory, 'batch manifest');
+    await mkdir(manifestDirectory);
+    const manifestPath = join(manifestDirectory, 'pairs.json');
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: '1.0',
+        pairs: [
+          { resume: '../resume-a.txt', job: '../job-a.txt' },
+          { resume: '../resume-b.txt', job: '../job-b.txt' },
+        ],
+      }),
+      'utf8',
+    );
+    await Promise.all([
+      writeFile(join(directory, 'resume-a.txt'), 'Skills: TypeScript, Node.js\n', 'utf8'),
+      writeFile(join(directory, 'job-a.txt'), 'Required: TypeScript, Node.js\n', 'utf8'),
+      writeFile(join(directory, 'resume-b.txt'), 'Skills: PostgreSQL\n', 'utf8'),
+      writeFile(join(directory, 'job-b.txt'), 'Required: PostgreSQL\n', 'utf8'),
+    ]);
+    const result = invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    const envelope = BatchEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(envelope.pairs.map((pair) => pair.status)).toEqual(['completed', 'completed']);
+  }, 120_000);
+
+  it('records a failed batch pair with exit code 3 while completing the rest', async () => {
+    const manifestDirectory = join(directory, 'batch partial');
+    await mkdir(manifestDirectory);
+    const manifestPath = join(manifestDirectory, 'pairs.json');
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: '1.0',
+        pairs: [
+          { resume: '../resume-a.txt', job: '../job-a.txt' },
+          { resume: '../missing resume.txt', job: '../job-a.txt' },
+        ],
+      }),
+      'utf8',
+    );
+    await Promise.all([
+      writeFile(join(directory, 'resume-a.txt'), 'Skills: TypeScript, Node.js\n', 'utf8'),
+      writeFile(join(directory, 'job-a.txt'), 'Required: TypeScript, Node.js\n', 'utf8'),
+    ]);
+    const result = invoke([
+      'analyze',
+      '--manifest',
+      manifestPath,
+      '--no-ai',
+      '--no-store',
+      '--format',
+      'json',
+      '--stdout',
+    ]);
+
+    expect(result.status).toBe(3);
+    const envelope = BatchEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(envelope.pairs.map((pair) => pair.status)).toEqual(['completed', 'failed']);
+    const failedPair = envelope.pairs[1];
+    if (failedPair?.status === 'failed') {
+      expect(failedPair.code).toBe(3);
+      expect(failedPair.error).toContain('missing resume.txt');
+    }
+  }, 120_000);
 });

@@ -985,7 +985,9 @@ This is the first résumé-worthy release.
 
 - [x] stdin support — `--stdin-job` and `--stdin-resume` (v0.6.0 step 6.0)
 - [x] Docker image — root `Dockerfile` plus `scripts/docker-smoke.mjs` (v0.6.0 step 6.0)
-- [ ] Batch analysis (v0.6.0 step 6.1)
+- [x] Batch analysis — `--manifest` with a `{ schemaVersion, pairs }` JSON file, bounded
+  `--concurrency`, per-pair failures recorded in a schema-versioned batch envelope, and per-pair
+  reports via `--out` (v0.6.0 step 6.1)
 - [ ] Local HTTP API (later Phase 6 step)
 - [ ] MCP server (later Phase 6 step)
 - [ ] GitHub Action (later Phase 6 step)
@@ -1002,6 +1004,26 @@ cat job.txt |
   --json |
   jq '.analysis.recommendation'
 ```
+
+Batch manifest (`--manifest batch.json`):
+
+```json
+{
+  "schemaVersion": "1.0",
+  "pairs": [
+    { "resume": "resumes/avery.txt", "job": "jobs/backend.txt" },
+    { "resume": "resumes/blake.pdf", "job": "jobs/frontend.txt" }
+  ]
+}
+```
+
+Paths resolve relative to the manifest file. `--concurrency` bounds simultaneous analyses
+(default 4, maximum 8, all values in `DEFAULT_BATCH_CONFIG`). Completed pairs appear as
+`{ "status": "completed", "resumeDocumentId", "jobId", "analysis" }` in manifest order; failed
+pairs as `{ "status": "failed", "code", "error" }`. The command exits 3 when any pair failed with
+an input or parsing error, 5 on storage failures, and 1 for other failures; all-completed batches
+exit 0. Batch mode is deterministic-only (rejects provider options), stores by default, honors
+`--no-store`, and writes per-pair reports with `--out`.
 
 ### Release
 

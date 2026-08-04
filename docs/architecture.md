@@ -3,13 +3,16 @@
 ## Phase 6 Boundary
 
 Phase 6 adds automation and integration surfaces without changing the deterministic core. Step 6.0
-implements stdin input and the Docker image; batch analysis, the MCP server, GitHub Action, plugin
-API, and webhook output arrive in later Phase 6 steps. The `analyze` command accepts
-`--stdin-job` and `--stdin-resume`, which read plaintext stdin under the same parser limits as
-files, cannot be combined with `--job`/`--resume` or with each other, and produce the same
-analysis envelope as file input. Stdin is consumed before parsing so an abandoned stream read can
-never crash a failing run. The root `Dockerfile` builds the workspace and deploys the CLI as a
-self-contained `node:22-alpine` image running as an unprivileged user.
+implements stdin input and the Docker image; step 6.1 implements batch analysis. The MCP server,
+GitHub Action, plugin API, local HTTP API, and webhook output arrive in later Phase 6 steps. The
+`analyze` command accepts `--stdin-job` and `--stdin-resume`, which read plaintext stdin under the
+same parser limits as files, cannot be combined with `--job`/`--resume` or with each other, and
+produce the same analysis envelope as file input. Stdin is consumed before parsing so an abandoned
+stream read can never crash a failing run. `--manifest` reads a schema-versioned JSON file of
+resume/job pairs whose paths resolve relative to the manifest, runs pairs through the same
+deterministic pipeline with bounded concurrency, and returns a schema-versioned batch envelope
+whose per-pair results stay in manifest order. The root `Dockerfile` builds the workspace and
+deploys the CLI as a self-contained `node:22-alpine` image running as an unprivileged user.
 
 ## Phase 5 Boundary
 

@@ -1,8 +1,10 @@
 import {
   EnhancedAnalysisEnvelopeSchema,
   AnalysisResultSchema,
+  BatchEnvelopeSchema,
   type AIEnhancement,
   type AnalysisResult,
+  type BatchEnvelope,
   type EvidenceMatch,
 } from '@roleproof/shared';
 
@@ -158,6 +160,35 @@ const evidenceList = (evidenceIds: readonly string[]): string =>
   evidenceIds.length === 0
     ? 'No evidence cited'
     : `Evidence: ${evidenceIds.map((id) => `\`${id}\``).join(', ')}`;
+
+export function renderBatchMarkdown(envelope: BatchEnvelope): string {
+  const validated = BatchEnvelopeSchema.parse(envelope);
+  const sections = [
+    '# RoleProof Batch Analysis',
+    '',
+    `Schema version: ${validated.schemaVersion}`,
+    '',
+    ...validated.pairs.flatMap((pair, index) => {
+      const heading = [`## Pair ${index + 1}`, ''];
+      if (pair.status === 'failed') {
+        return [...heading, `Status: **failed** (exit code ${pair.code})`, '', pair.error, ''];
+      }
+      return [
+        ...heading,
+        `Status: **completed**`,
+        `Recommendation: **${pair.analysis.recommendation}**`,
+        `Overall score: **${pair.analysis.overallScore}/100**`,
+        renderLines(
+          pair.analysis.hardBlockers.map((blocker) => `- **Blocker:** ${text(blocker)}`),
+          'No hard eligibility blocker was detected from explicit supplied facts.',
+        ),
+        '',
+      ];
+    }),
+  ];
+
+  return sections.join('\n');
+}
 
 export function renderEnhancedMarkdown(result: AnalysisResult, enhancement: AIEnhancement): string {
   const envelope = EnhancedAnalysisEnvelopeSchema.parse({

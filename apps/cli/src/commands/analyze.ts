@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 
 import {
   analyzeDeterministic,
@@ -14,6 +16,7 @@ import {
   parseDocumentFileWithMetadata,
   parseJobUrlWithMetadata,
   parsePlaintextBytesWithMetadata,
+  type ParsedDocumentFile,
 } from '@roleproof/parsers';
 import {
   buildProviderInputs,
@@ -37,12 +40,17 @@ import {
   type StorageDatabase,
 } from '@roleproof/storage';
 import {
-  CandidateContextSchema,
   AnalysisResultSchema,
+  BatchEnvelopeSchema,
+  BatchManifestSchema,
+  CandidateContextSchema,
+  DEFAULT_BATCH_CONFIG,
+  type AnalysisResult,
+  type BatchManifest,
   type CandidateProfile,
   type CareerEvidence,
-  type AnalysisResult,
   type JobRequirement,
+  type JobRetrievalMetadata,
   type ParsedDocument,
   type ProviderConfig,
   type StoredDocument,
@@ -50,13 +58,20 @@ import {
 import type { Command } from 'commander';
 
 import { CliError } from '../errors.js';
-import { writeAnalysisOutput } from '../output.js';
+import { writeAnalysisOutput, writeBatchOutput } from '../output.js';
 import type { CliOutput, CliState } from '../program.js';
 import { AnalyzeOptionsSchema, type AnalyzeOptions } from './analyze-options.js';
 import { buildProviderConfig, createConfiguredProvider } from './provider-config.js';
 
 type AnalysisLike = AnalysisResult & {
   scoreContributions: NonNullable<AnalysisResult['scoreContributions']>;
+};
+
+type JobInput = {
+  document: ParsedDocument;
+  contentSha256: string;
+  originalName?: string;
+  source?: JobRetrievalMetadata | undefined;
 };
 
 function sha256(value: string): string {
@@ -255,6 +270,326 @@ async function readStdin(input: NodeJS.ReadableStream): Promise<Uint8Array> {
   return new Uint8Array(Buffer.concat(chunks.map((part) => Buffer.from(part))));
 }
 
+interface PipelineOutcome {
+  analysis: AnalysisLike;
+  reports: { json: string; markdown: string };
+  providerFailed: boolean;
+}
+
+async function runAnalysisPipeline(
+  options: AnalyzeOptions,
+  providerConfig: ProviderConfig | undefined,
+  configuredProvider: AIProvider | undefined,
+  resumeFile: ParsedDocumentFile,
+  jobFile: JobInput,
+  output: CliOutput,
+  repositories: RoleProofRepositories | undefined,
+  profile: CandidateProfile | undefined,
+): Promise<PipelineOutcome> {
+  if (!options.store && options.profile === undefined) {
+    const analysisBase = AnalysisResultSchema.parse(
+      analyzeDeterministic({
+        resume: resumeFile.document,
+        job: jobFile.document,
+        candidateContext: candidateContext(options),
+      }),
+    ) as AnalysisLike;
+    const analysis: AnalysisLike =
+      jobFile.source === undefined
+        ? analysisBase
+        : (AnalysisResultSchema.parse({
+            ...analysisBase,
+            metadata: { ...analysisBase.metadata, jobSource: jobFile.source },
+          }) as AnalysisLike);
+    const requirements = extractJobRequirements(
+      jobFile.document,
+      DEFAULT_NORMALIZATION_DATA.aliases,
+    ).requirements;
+    const evidence = extractCareerEvidence(resumeFile.document, DEFAULT_NORMALIZATION_DATA.aliases);
+    const enhanced = await enhanceBaseline(
+      options,
+      providerConfig,
+      configuredProvider,
+      analysis,
+      requirements,
+      evidence,
+      output,
+    );
+    return { analysis, reports: enhanced.reports, providerFailed: enhanced.providerFailed };
+  }
+
+  const repositoriesOrThrow = repositories;
+  const profileOrThrow = profile;
+  if (repositoriesOrThrow === undefined || profileOrThrow === undefined) {
+    throw new CliError(5, 'Storage is not available for the selected profile.');
+  }
+  const profileId = profileOrThrow.id;
+  const documentId = stableId('document', profileId, resumeFile.document.id);
+  const activeResume = { ...resumeFile.document, id: documentId };
+  const extractedEvidence = extractCareerEvidence(
+    activeResume,
+    DEFAULT_NORMALIZATION_DATA.aliases,
+    { profileId },
+  );
+  const documentInput: Omit<StoredDocument, 'createdAt' | 'updatedAt'> = {
+    schemaVersion: '1.0',
+    id: documentId,
+    profileId,
+    kind: 'resume',
+    format: activeResume.format,
+    originalName: resumeFile.originalName,
+    contentSha256: resumeFile.contentSha256,
+    parsedContentSha256: sha256(activeResume.text),
+    text: activeResume.text,
+    confidence: activeResume.confidence,
+    warnings: activeResume.warnings,
+  };
+  const duplicate = options.store
+    ? await repositoriesOrThrow.documents.insert(documentInput, extractedEvidence)
+    : await repositoriesOrThrow.documents.findDuplicate(
+        profileId,
+        documentInput.contentSha256,
+        documentInput.parsedContentSha256,
+      );
+  const storedResume =
+    duplicate.status === 'none'
+      ? options.store
+        ? await repositoriesOrThrow.documents.get(documentId)
+        : undefined
+      : duplicate.document;
+  const analysisResume = storedResume === undefined ? activeResume : parsedResume(storedResume);
+  const activeEvidence =
+    storedResume === undefined
+      ? extractedEvidence
+      : await repositoriesOrThrow.evidence.listByDocument(storedResume.id);
+  const evidence =
+    options.profile === undefined
+      ? activeEvidence
+      : [
+          ...new Map(
+            [
+              ...(await repositoriesOrThrow.evidence.listByProfile(profileId)),
+              ...activeEvidence,
+            ].map((item) => [item.id, item]),
+          ).values(),
+        ];
+
+  let analysisJob = jobFile.document;
+  const requirements = extractJobRequirements(
+    jobFile.document,
+    DEFAULT_NORMALIZATION_DATA.aliases,
+  ).requirements;
+  if (options.store) {
+    const storedJob = await repositoriesOrThrow.jobs.save(
+      {
+        schemaVersion: '1.0',
+        id: jobFile.document.id,
+        format: 'plaintext',
+        contentSha256: jobFile.contentSha256,
+        parsedContentSha256: sha256(jobFile.document.text),
+        text: jobFile.document.text,
+        confidence: jobFile.document.confidence,
+        warnings: jobFile.document.warnings,
+      },
+      requirements,
+    );
+    if (jobFile.source !== undefined) {
+      await repositoriesOrThrow.jobSources.saveSource({
+        ...jobFile.source,
+        jobId: storedJob.id,
+      });
+    }
+    analysisJob = {
+      schemaVersion: '1.0',
+      id: storedJob.id,
+      kind: 'job',
+      format: 'plaintext',
+      text: storedJob.text,
+      confidence: storedJob.confidence,
+      warnings: storedJob.warnings,
+    };
+  }
+
+  const analysisContext = candidateContext(options, profileOrThrow);
+  const analysisBase = AnalysisResultSchema.parse(
+    analyzeDeterministicWithEvidence({
+      resume: analysisResume,
+      job: analysisJob,
+      candidateContext: analysisContext,
+      profileId,
+      evidence,
+    }),
+  ) as AnalysisLike;
+  const analysis: AnalysisLike =
+    jobFile.source === undefined
+      ? analysisBase
+      : (AnalysisResultSchema.parse({
+          ...analysisBase,
+          metadata: { ...analysisBase.metadata, jobSource: jobFile.source },
+        }) as AnalysisLike);
+  const baselineReports = { json: renderJson(analysis), markdown: renderMarkdown(analysis) };
+  if (options.store && (await repositoriesOrThrow.analyses.get(analysis.id)) === undefined) {
+    await repositoriesOrThrow.analyses.save(
+      analysis,
+      buildEvidenceReferences(analysis, evidence, profileFactEvidenceIds(analysisContext)),
+      baselineReports.markdown,
+    );
+  }
+  const enhanced = await enhanceBaseline(
+    options,
+    providerConfig,
+    configuredProvider,
+    analysis,
+    requirements,
+    evidence,
+    output,
+    options.store ? repositoriesOrThrow : undefined,
+  );
+  return { analysis, reports: enhanced.reports, providerFailed: enhanced.providerFailed };
+}
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = next;
+      next += 1;
+      if (index >= items.length) return;
+      const item = items[index];
+      if (item === undefined) return;
+      results[index] = await mapper(item, index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+function pairFailureCode(error: unknown): number {
+  if (error instanceof ParserError) return 3;
+  if (error instanceof StorageError) return 5;
+  if (error instanceof CliError) return error.exitCode;
+  return 1;
+}
+
+function pairFailureMessage(error: unknown): string {
+  if (error instanceof ParserError) return error.message;
+  if (error instanceof StorageError) {
+    return 'Storage operation failed. Check the database path and permissions.';
+  }
+  if (error instanceof CliError) return error.message;
+  return 'Analysis failed. Verify the inputs and try again.';
+}
+
+async function runBatchAnalysis(
+  options: AnalyzeOptions,
+  providerConfig: ProviderConfig | undefined,
+  configuredProvider: AIProvider | undefined,
+  output: CliOutput,
+  state: CliState,
+  command: Command,
+): Promise<void> {
+  const manifestPath = resolve(options.manifest!);
+  let rawManifest: string;
+  try {
+    rawManifest = await readFile(manifestPath, 'utf8');
+  } catch {
+    throw new CliError(
+      3,
+      'Unable to read the batch manifest. Check the manifest path and permissions.',
+    );
+  }
+  let manifestJson: unknown;
+  try {
+    manifestJson = JSON.parse(rawManifest.replace(/^\uFEFF/, ''));
+  } catch {
+    throw new CliError(2, 'Invalid batch manifest: content is not valid JSON.');
+  }
+  const manifestResult = BatchManifestSchema.safeParse(manifestJson);
+  if (!manifestResult.success) {
+    throw new CliError(
+      2,
+      `Invalid batch manifest: ${manifestResult.error.issues[0]?.message ?? 'schema violation'}`,
+    );
+  }
+  const manifest: BatchManifest = manifestResult.data;
+  if (manifest.pairs.length > DEFAULT_BATCH_CONFIG.maxPairs) {
+    throw new CliError(
+      2,
+      `Batch manifest exceeds the maximum of ${DEFAULT_BATCH_CONFIG.maxPairs} pairs.`,
+    );
+  }
+
+  const manifestDirectory = dirname(manifestPath);
+  const concurrency = options.concurrency ?? DEFAULT_BATCH_CONFIG.defaultConcurrency;
+  let database: StorageDatabase | undefined;
+  try {
+    if (options.store) {
+      const path = databasePath(command);
+      database = await openStorage({ ...(path === undefined ? {} : { path }) });
+    }
+    const repositories = database === undefined ? undefined : createRoleProofRepositories(database);
+    const profile =
+      repositories === undefined ? undefined : await repositories.profiles.ensureDefault();
+
+    const results = await mapWithConcurrency(manifest.pairs, concurrency, async (pair) => {
+      const resumePath = resolve(manifestDirectory, pair.resume);
+      const jobPath = resolve(manifestDirectory, pair.job);
+      try {
+        const [resumeFile, jobInput] = await Promise.all([
+          parseDocumentFileWithMetadata(resumePath, 'resume'),
+          parseDocumentFileWithMetadata(jobPath, 'job'),
+        ]);
+        const jobFile: JobInput = { ...jobInput, source: undefined };
+        const outcome = await runAnalysisPipeline(
+          options,
+          providerConfig,
+          configuredProvider,
+          resumeFile,
+          jobFile,
+          output,
+          repositories,
+          profile,
+        );
+        return {
+          status: 'completed' as const,
+          resumeDocumentId: outcome.analysis.resumeDocumentId ?? resumeFile.document.id,
+          jobId: outcome.analysis.jobId ?? jobFile.document.id,
+          analysis: outcome.analysis,
+        };
+      } catch (error) {
+        return {
+          status: 'failed' as const,
+          code: pairFailureCode(error),
+          error: pairFailureMessage(error),
+        };
+      }
+    });
+
+    const envelope = BatchEnvelopeSchema.parse({ schemaVersion: '1.0', pairs: results });
+    await writeBatchOutput(options, envelope, output);
+    const failed = results.filter((result) => result.status === 'failed');
+    if (failed.length === 0) {
+      state.exitCode = 0;
+      return;
+    }
+    state.exitCode = failed.some((result) => result.code === 3)
+      ? 3
+      : failed.some((result) => result.code === 5)
+        ? 5
+        : 1;
+    output.writeErr(`roleproof: ${failed.length} of ${results.length} batch pairs failed.\n`);
+  } finally {
+    if (database !== undefined) {
+      await closeAnalyzeStorage(database);
+    }
+  }
+}
+
 export function registerAnalyzeCommand(
   program: Command,
   output: CliOutput,
@@ -294,6 +629,8 @@ export function registerAnalyzeCommand(
     .option('--redact-employer', 'Redact confidential employer names')
     .option('--redact-clearance', 'Redact clearance details')
     .option('--redact-term <term>', 'Redact a selected term (repeatable)', collect, [])
+    .option('--manifest <path>', 'JSON manifest of resume/job pairs for batch analysis')
+    .option('--concurrency <number>', 'Maximum concurrent batch analyses', '4')
     .action(async (rawOptions: unknown, command: Command) => {
       const parsedOptions = AnalyzeOptionsSchema.safeParse(rawOptions);
       if (!parsedOptions.success) {
@@ -313,6 +650,18 @@ export function registerAnalyzeCommand(
       let database: StorageDatabase | undefined;
 
       try {
+        if (options.manifest !== undefined) {
+          await runBatchAnalysis(
+            options,
+            providerConfig,
+            configuredProvider,
+            output,
+            state,
+            command,
+          );
+          return;
+        }
+
         const stdinContent =
           options.stdinResume || options.stdinJob ? await readStdin(stdin) : undefined;
         const [resumeFile, jobInput] = await Promise.all([
@@ -325,42 +674,26 @@ export function registerAnalyzeCommand(
               ? parseJobUrlWithMetadata(options.job!)
               : parseDocumentFileWithMetadata(options.job!, 'job'),
         ]);
-        const jobFile = 'source' in jobInput ? jobInput : { ...jobInput, source: undefined };
+        const jobFile: JobInput =
+          'source' in jobInput ? jobInput : { ...jobInput, source: undefined };
 
         if (!options.store && options.profile === undefined) {
-          const analysisBase = AnalysisResultSchema.parse(
-            analyzeDeterministic({
-              resume: resumeFile.document,
-              job: jobFile.document,
-              candidateContext: candidateContext(options),
-            }),
-          ) as AnalysisLike;
-          const analysis: AnalysisLike =
-            jobFile.source === undefined
-              ? analysisBase
-              : (AnalysisResultSchema.parse({
-                  ...analysisBase,
-                  metadata: { ...analysisBase.metadata, jobSource: jobFile.source },
-                }) as AnalysisLike);
-          const requirements = extractJobRequirements(
-            jobFile.document,
-            DEFAULT_NORMALIZATION_DATA.aliases,
-          ).requirements;
-          const evidence = extractCareerEvidence(
-            resumeFile.document,
-            DEFAULT_NORMALIZATION_DATA.aliases,
-          );
-          const enhanced = await enhanceBaseline(
+          const outcome = await runAnalysisPipeline(
             options,
             providerConfig,
             configuredProvider,
-            analysis,
-            requirements,
-            evidence,
+            resumeFile,
+            jobFile,
             output,
+            undefined,
+            undefined,
           );
-          await writeAnalysisOutput(options, enhanced.reports, output);
-          state.exitCode = enhanced.providerFailed ? 4 : analysis.hardBlockers.length > 0 ? 10 : 0;
+          await writeAnalysisOutput(options, outcome.reports, output);
+          state.exitCode = outcome.providerFailed
+            ? 4
+            : outcome.analysis.hardBlockers.length > 0
+              ? 10
+              : 0;
           return;
         }
 
@@ -375,134 +708,26 @@ export function registerAnalyzeCommand(
           options.profile === undefined
             ? await repositories.profiles.ensureDefault()
             : await requireProfile(repositories, profileId);
-        const documentId = stableId('document', profileId, resumeFile.document.id);
-        const activeResume = { ...resumeFile.document, id: documentId };
-        const extractedEvidence = extractCareerEvidence(
-          activeResume,
-          DEFAULT_NORMALIZATION_DATA.aliases,
-          { profileId },
-        );
-        const documentInput: Omit<StoredDocument, 'createdAt' | 'updatedAt'> = {
-          schemaVersion: '1.0',
-          id: documentId,
-          profileId,
-          kind: 'resume',
-          format: activeResume.format,
-          originalName: resumeFile.originalName,
-          contentSha256: resumeFile.contentSha256,
-          parsedContentSha256: sha256(activeResume.text),
-          text: activeResume.text,
-          confidence: activeResume.confidence,
-          warnings: activeResume.warnings,
-        };
-        const duplicate = options.store
-          ? await repositories.documents.insert(documentInput, extractedEvidence)
-          : await repositories.documents.findDuplicate(
-              profileId,
-              documentInput.contentSha256,
-              documentInput.parsedContentSha256,
-            );
-        const storedResume =
-          duplicate.status === 'none'
-            ? options.store
-              ? await repositories.documents.get(documentId)
-              : undefined
-            : duplicate.document;
-        const analysisResume =
-          storedResume === undefined ? activeResume : parsedResume(storedResume);
-        const activeEvidence =
-          storedResume === undefined
-            ? extractedEvidence
-            : await repositories.evidence.listByDocument(storedResume.id);
-        const evidence =
-          options.profile === undefined
-            ? activeEvidence
-            : [
-                ...new Map(
-                  [
-                    ...(await repositories.evidence.listByProfile(profileId)),
-                    ...activeEvidence,
-                  ].map((item) => [item.id, item]),
-                ).values(),
-              ];
-
-        let analysisJob = jobFile.document;
-        const requirements = extractJobRequirements(
-          jobFile.document,
-          DEFAULT_NORMALIZATION_DATA.aliases,
-        ).requirements;
-        if (options.store) {
-          const storedJob = await repositories.jobs.save(
-            {
-              schemaVersion: '1.0',
-              id: jobFile.document.id,
-              format: 'plaintext',
-              contentSha256: jobFile.contentSha256,
-              parsedContentSha256: sha256(jobFile.document.text),
-              text: jobFile.document.text,
-              confidence: jobFile.document.confidence,
-              warnings: jobFile.document.warnings,
-            },
-            requirements,
-          );
-          if (jobFile.source !== undefined) {
-            await repositories.jobSources.saveSource({
-              ...jobFile.source,
-              jobId: storedJob.id,
-            });
-          }
-          analysisJob = {
-            schemaVersion: '1.0',
-            id: storedJob.id,
-            kind: 'job',
-            format: 'plaintext',
-            text: storedJob.text,
-            confidence: storedJob.confidence,
-            warnings: storedJob.warnings,
-          };
-        }
-
-        const analysisContext = candidateContext(options, profile);
-        const analysisBase = AnalysisResultSchema.parse(
-          analyzeDeterministicWithEvidence({
-            resume: analysisResume,
-            job: analysisJob,
-            candidateContext: analysisContext,
-            profileId,
-            evidence,
-          }),
-        ) as AnalysisLike;
-        const analysis: AnalysisLike =
-          jobFile.source === undefined
-            ? analysisBase
-            : (AnalysisResultSchema.parse({
-                ...analysisBase,
-                metadata: { ...analysisBase.metadata, jobSource: jobFile.source },
-              }) as AnalysisLike);
-        const baselineReports = { json: renderJson(analysis), markdown: renderMarkdown(analysis) };
-        if (options.store && (await repositories.analyses.get(analysis.id)) === undefined) {
-          await repositories.analyses.save(
-            analysis,
-            buildEvidenceReferences(analysis, evidence, profileFactEvidenceIds(analysisContext)),
-            baselineReports.markdown,
-          );
-        }
-        const enhanced = await enhanceBaseline(
+        const outcome = await runAnalysisPipeline(
           options,
           providerConfig,
           configuredProvider,
-          analysis,
-          requirements,
-          evidence,
+          resumeFile,
+          jobFile,
           output,
-          options.store ? repositories : undefined,
+          repositories,
+          profile,
         );
         if (database !== undefined) {
           await closeAnalyzeStorage(database);
           database = undefined;
         }
-        await writeAnalysisOutput(options, enhanced.reports, output);
-        state.exitCode = enhanced.providerFailed ? 4 : analysis.hardBlockers.length > 0 ? 10 : 0;
+        await writeAnalysisOutput(options, outcome.reports, output);
+        state.exitCode = outcome.providerFailed
+          ? 4
+          : outcome.analysis.hardBlockers.length > 0
+            ? 10
+            : 0;
       } catch (error) {
         if (error instanceof CliError) throw error;
         if (error instanceof ParserError) throw new CliError(3, error.message);

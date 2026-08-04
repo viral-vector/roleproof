@@ -1,9 +1,11 @@
 import {
   AnalysisEnvelopeSchema,
   AnalysisResultSchema,
+  BatchEnvelopeSchema,
   EnhancedAnalysisEnvelopeSchema,
   type AIEnhancement,
   type AnalysisResult,
+  type BatchEnvelope,
 } from '@roleproof/shared';
 
 export function renderJson(result: AnalysisResult): string {
@@ -13,6 +15,11 @@ export function renderJson(result: AnalysisResult): string {
     analysis,
   });
   return `${JSON.stringify(envelope, null, 2)}\n`;
+}
+
+export function renderBatchJson(envelope: BatchEnvelope): string {
+  const validated = BatchEnvelopeSchema.parse(envelope);
+  return `${JSON.stringify(validated, null, 2)}\n`;
 }
 
 export function renderEnhancedJson(result: AnalysisResult, enhancement: AIEnhancement): string {

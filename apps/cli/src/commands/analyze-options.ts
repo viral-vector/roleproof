@@ -1,11 +1,23 @@
 import { z } from 'zod';
 
+import { DEFAULT_BATCH_CONFIG } from '@roleproof/shared';
+
 export const AnalyzeOptionsSchema = z
   .object({
     resume: z.string().min(1).optional(),
     job: z.string().min(1).optional(),
     stdinResume: z.boolean().optional(),
     stdinJob: z.boolean().optional(),
+    manifest: z.string().min(1).optional(),
+    concurrency: z.coerce
+      .number()
+      .int()
+      .min(1, `--concurrency must be between 1 and ${DEFAULT_BATCH_CONFIG.maxConcurrency}`)
+      .max(
+        DEFAULT_BATCH_CONFIG.maxConcurrency,
+        `--concurrency must be between 1 and ${DEFAULT_BATCH_CONFIG.maxConcurrency}`,
+      )
+      .optional(),
     format: z.enum(['json', 'markdown', 'both']),
     out: z.string().min(1).optional(),
     stdout: z.boolean(),
@@ -35,6 +47,77 @@ export const AnalyzeOptionsSchema = z
   })
   .strict()
   .superRefine((options, context) => {
+    if (options.manifest !== undefined) {
+      const batchConflicts = [
+        { field: 'resume', label: '--resume' },
+        { field: 'job', label: '--job' },
+        { field: 'stdinResume', label: '--stdin-resume' },
+        { field: 'stdinJob', label: '--stdin-job' },
+      ] as const;
+      for (const { field, label } of batchConflicts) {
+        if (options[field] !== undefined) {
+          context.addIssue({
+            code: 'custom',
+            message: `--manifest cannot be combined with ${label}`,
+            path: [field],
+          });
+        }
+      }
+      if (options.profile !== undefined) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Batch analysis does not support --profile',
+          path: ['profile'],
+        });
+      }
+      if (options.provider !== undefined) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Batch analysis does not support AI providers',
+          path: ['provider'],
+        });
+      }
+      if (options.ai) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Batch analysis requires --no-ai',
+          path: ['ai'],
+        });
+      }
+      const providerSubOptionFields = [
+        { field: 'model', label: '--model' },
+        { field: 'baseUrl', label: '--base-url' },
+        { field: 'destination', label: '--destination' },
+        { field: 'confirmTransmission', label: '--confirm-transmission' },
+        { field: 'structuredOutputMode', label: '--structured-output-mode' },
+        { field: 'providerTimeoutMs', label: '--provider-timeout-ms' },
+        { field: 'maxInputChars', label: '--max-input-chars' },
+        { field: 'maxOutputTokens', label: '--max-output-tokens' },
+        { field: 'maxTotalTokens', label: '--max-total-tokens' },
+        { field: 'maxCostUsd', label: '--max-cost-usd' },
+        { field: 'inputCostPerMillionUsd', label: '--input-cost-per-million-usd' },
+        { field: 'outputCostPerMillionUsd', label: '--output-cost-per-million-usd' },
+        { field: 'redactEmployer', label: '--redact-employer' },
+        { field: 'redactClearance', label: '--redact-clearance' },
+      ] as const;
+      for (const { field, label } of providerSubOptionFields) {
+        if (options[field] !== undefined) {
+          context.addIssue({
+            code: 'custom',
+            message: `Batch analysis does not support ${label}`,
+            path: [field],
+          });
+        }
+      }
+      if ((options.redactTerm?.length ?? 0) > 0) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Batch analysis does not support --redact-term',
+          path: ['redactTerm'],
+        });
+      }
+      return;
+    }
     if (
       (options.stdinResume !== undefined && options.resume !== undefined) ||
       (options.stdinResume !== undefined && options.stdinJob !== undefined)

@@ -95,6 +95,25 @@ Exit code `3` identifies file or parsing errors. Exit code `4` means provider en
 and the deterministic fallback was returned. Exit code `10` means analysis succeeded but found an
 explicit hard eligibility blocker. JSON output remains valid in both fallback and blocker cases.
 
+## Batch analysis
+
+`--manifest` analyzes many resume/job pairs from one JSON file. Paths resolve relative to the
+manifest, and pairs run concurrently with a default of 4 simultaneous analyses:
+
+```powershell
+# batch.json
+# { "schemaVersion": "1.0", "pairs": [{ "resume": "resumes/avery.txt", "job": "jobs/backend.txt" }] }
+pnpm exec roleproof analyze --manifest batch.json --no-ai --format json --stdout
+```
+
+`--concurrency` overrides the worker count (1-8). Completed pairs are reported in manifest order
+as `{ "status": "completed", "resumeDocumentId", "jobId", "analysis" }`; failed pairs are reported
+in place as `{ "status": "failed", "code", "error" }` instead of aborting the batch. The exit code
+is `3` when any pair failed on input or parsing, `5` on storage failures, and `1` for other
+failures; an all-completed batch exits `0`. Batch mode is deterministic-only, stores analyses by
+default (honoring `--no-store`), and with `--out` writes `roleproof-batch.json`,
+`roleproof-batch.md`, and per-pair `roleproof-batch-pair-<n>.json`/`.md` reports.
+
 ## Local Web Server
 
 ```powershell

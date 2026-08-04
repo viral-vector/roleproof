@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.6.1 - unreleased
+
+Phase 6 step 6.1: batch analysis. The analysis envelope and CLI contracts are unchanged except for
+the new input flags.
+
+### Batch analysis
+
+- Added `--manifest <path>` to `roleproof analyze` for schema-versioned JSON files of resume/job
+  pairs whose paths resolve relative to the manifest file.
+- Added `--concurrency <number>` to bound simultaneous analyses (default 4, maximum 8, defined in
+  the shared batch config).
+- Batch output is a schema-versioned `1.0` envelope whose per-pair results stay in manifest order:
+  completed pairs carry `{ "status": "completed", "resumeDocumentId", "jobId", "analysis" }`, and
+  failed pairs carry `{ "status": "failed", "code", "error" }` instead of aborting the batch.
+- Exit codes: `3` when any pair failed on input or parsing, `5` on storage failures, `1` for other
+  failures, and `0` when every pair completed.
+- Batch mode is deterministic-only (provider options are rejected), stores analyses by default,
+  honors `--no-store`, and writes `roleproof-batch.json`, `roleproof-batch.md`, and per-pair
+  `roleproof-batch-pair-<n>` reports via `--out`.
+- Manifest files saved with a UTF-8 byte order mark are accepted, matching plaintext parser
+  behavior on Windows.
+
+### Schemas
+
+- Added `BatchManifestSchema`, `BatchEnvelopeSchema`, and `BatchConfigSchema` to `@roleproof/shared`
+  with valid and invalid fixture coverage.
+
 ## 0.6.0 - 2026-08-04
 
 Phase 6 step 6.0: stdin input and the Docker image. Batch analysis and the remaining automation
