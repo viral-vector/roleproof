@@ -13,6 +13,7 @@ import {
   ParserError,
   parseDocumentFileWithMetadata,
   parseJobUrlWithMetadata,
+  parsePlaintextBytesWithMetadata,
 } from '@roleproof/parsers';
 import {
   buildProviderInputs,
@@ -244,12 +245,29 @@ async function enhanceBaseline(
   };
 }
 
-export function registerAnalyzeCommand(program: Command, output: CliOutput, state: CliState): void {
+async function readStdin(input: NodeJS.ReadableStream): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of input) {
+    chunks.push(
+      typeof chunk === 'string' ? new TextEncoder().encode(chunk) : new Uint8Array(chunk),
+    );
+  }
+  return new Uint8Array(Buffer.concat(chunks.map((part) => Buffer.from(part))));
+}
+
+export function registerAnalyzeCommand(
+  program: Command,
+  output: CliOutput,
+  state: CliState,
+  stdin: NodeJS.ReadableStream,
+): void {
   program
     .command('analyze')
     .description('Analyze a local resume against a local plaintext job description')
-    .requiredOption('--resume <path>', 'Path to a plaintext, PDF, or DOCX resume')
-    .requiredOption('--job <path>', 'Path to a plaintext job description')
+    .option('--resume <path>', 'Path to a plaintext, PDF, or DOCX resume')
+    .option('--stdin-resume', 'Read the resume as plaintext from stdin')
+    .option('--job <path>', 'Path to a plaintext job description')
+    .option('--stdin-job', 'Read the job description as plaintext from stdin')
     .option('--format <format>', 'Output format: markdown, json, or both', 'markdown')
     .option('--out <directory>', 'Write report files to this directory')
     .option('--stdout', 'Write a single selected format to stdout', false)
@@ -295,11 +313,17 @@ export function registerAnalyzeCommand(program: Command, output: CliOutput, stat
       let database: StorageDatabase | undefined;
 
       try {
+        const stdinContent =
+          options.stdinResume || options.stdinJob ? await readStdin(stdin) : undefined;
         const [resumeFile, jobInput] = await Promise.all([
-          parseDocumentFileWithMetadata(options.resume, 'resume'),
-          isJobUrl(options.job)
-            ? parseJobUrlWithMetadata(options.job)
-            : parseDocumentFileWithMetadata(options.job, 'job'),
+          options.stdinResume
+            ? parsePlaintextBytesWithMetadata(stdinContent!, 'resume')
+            : parseDocumentFileWithMetadata(options.resume!, 'resume'),
+          options.stdinJob
+            ? parsePlaintextBytesWithMetadata(stdinContent!, 'job')
+            : isJobUrl(options.job!)
+              ? parseJobUrlWithMetadata(options.job!)
+              : parseDocumentFileWithMetadata(options.job!, 'job'),
         ]);
         const jobFile = 'source' in jobInput ? jobInput : { ...jobInput, source: undefined };
 

@@ -458,6 +458,7 @@ roleproof analyze \
 ```text
 --resume <path>
 --job <path-or-url>
+--stdin-resume
 --stdin-job
 --format markdown|json|both
 --out <directory>
@@ -474,6 +475,9 @@ roleproof analyze \
 --db <sqlite-path>
 --no-store
 ```
+
+`--stdin-resume` and `--stdin-job` read plaintext stdin instead of `--resume`/`--job`; they cannot
+be combined with their file counterparts or with each other.
 
 ## Planned commands
 
@@ -979,14 +983,14 @@ This is the first résumé-worthy release.
 
 ### Scope
 
-- stdin support
-- Batch analysis
-- Local HTTP API
-- MCP server
-- GitHub Action
-- Plugin API
-- Docker image
-- Webhook output
+- [x] stdin support — `--stdin-job` and `--stdin-resume` (v0.6.0 step 6.0)
+- [x] Docker image — root `Dockerfile` plus `scripts/docker-smoke.mjs` (v0.6.0 step 6.0)
+- [ ] Batch analysis (v0.6.0 step 6.1)
+- [ ] Local HTTP API (later Phase 6 step)
+- [ ] MCP server (later Phase 6 step)
+- [ ] GitHub Action (later Phase 6 step)
+- [ ] Plugin API (later Phase 6 step)
+- [ ] Webhook output (later Phase 6 step)
 
 Example:
 

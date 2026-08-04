@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.6.0 - 2026-08-04
+
+Phase 6 step 6.0: stdin input and the Docker image. Batch analysis and the remaining automation
+surface (MCP server, GitHub Action, plugin API, webhook output) land in later Phase 6 steps. The
+analysis envelope and CLI contracts are unchanged except for the new input flags.
+
+### stdin input
+
+- Added `--stdin-job` and `--stdin-resume` to `roleproof analyze` so job descriptions and résumés
+  can be piped instead of passed as file paths. Stdin input is plaintext only, and a flag cannot be
+  combined with its file counterpart (`--job`, `--resume`) or with each other.
+- Stdin content is read completely before analysis starts, so a missing file input fails with the
+  documented exit code 3 instead of leaving an abandoned stream read.
+- `--no-store` and `--stdout` behave identically for piped and file inputs; the analysis envelope
+  is unchanged for identical content.
+
+### Docker image
+
+- Added a multi-stage `Dockerfile` that builds the workspace and deploys a self-contained
+  `node:22-alpine` runtime image running as an unprivileged `node` user.
+- Added `scripts/docker-smoke.mjs`, a cross-platform smoke check that builds the image and runs
+  file and piped-stdin analyses inside a container, validating the JSON envelope.
+- Added `docker-compose.yml` for local development: it builds the image and mounts `./fixtures`
+  read-only as `/work`, so `docker compose run --rm roleproof analyze ...` and piped-stdin runs
+  with `-T` work without manual `docker build`/`docker run` flags.
+- CI runs the smoke check on Ubuntu after the verification matrix passes, so the packaged image is
+  validated on every push and pull request.
+
+### Parsing
+
+- Added `parsePlaintextBytesWithMetadata` to `@roleproof/parsers`, which parses in-memory plaintext
+  bytes under the same size and encoding limits as file input and reports the source name `(stdin)`.
+
 ## 0.5.1 - 2026-08-03
 
 Deterministic accuracy and safety fixes for job URL fetching, structured HTML extraction, and core

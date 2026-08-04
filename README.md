@@ -62,6 +62,21 @@ Supported options include `--format markdown|json|both`, `--out`, `--stdout`, `-
 supported for resumes; job descriptions may be plaintext files or HTTP(S) URLs. URL fetching is
 bounded by parser limits and records source metadata when analysis succeeds.
 
+Job descriptions and résumés can also be piped as plaintext through stdin:
+
+```powershell
+Get-Content fixtures/phase-1/strong-match/job.txt -Raw | pnpm exec roleproof analyze `
+  --resume fixtures/phase-1/strong-match/resume.txt `
+  --stdin-job `
+  --no-ai `
+  --format json `
+  --stdout
+```
+
+`--stdin-job` and `--stdin-resume` read plaintext only and cannot be combined with their file
+counterparts (`--job`, `--resume`) or with each other. Piped input follows the same size and
+encoding limits as plaintext files and produces identical analysis output.
+
 AI is opt-in through an explicit `--provider` and `--model`; environment variables never select a
 provider. Hosted and custom destinations also require `--confirm-transmission`. See
 [`docs/provider-configuration.md`](./docs/provider-configuration.md) for OpenAI, Ollama, LM Studio,
@@ -127,6 +142,45 @@ Storage commands default to text output and support `--format json`; `report sho
 `markdown` or `json`. Resume imports and manual evidence notes are profile-scoped. `history` lists
 stored analyses, and `search` queries stored documents, jobs, career evidence, and analysis
 reports. Permanent deletion is noninteractive and requires `data purge --yes`.
+
+## Docker
+
+A multi-stage `Dockerfile` builds a self-contained `roleproof` image on `node:22-alpine` that runs
+as an unprivileged user:
+
+```powershell
+docker build -t roleproof .
+docker run --rm -v "$PWD/fixtures:/work:ro" roleproof analyze `
+  --resume /work/phase-1/strong-match/resume.txt `
+  --job /work/phase-1/strong-match/job.txt `
+  --no-ai --no-store --format json --stdout
+```
+
+Mount your own résumé and job files as a read-only volume and pass their container paths to the
+same flags the CLI accepts, including `--stdin-job`/`--stdin-resume` with `docker run -i`. Run
+`node scripts/docker-smoke.mjs` to build the image and validate file and piped analysis inside a
+container; CI runs the same check on every push and pull request.
+
+For local development, `docker-compose.yml` wires up the image build and mounts `./fixtures`
+read-only as `/work`:
+
+```powershell
+docker compose run --rm roleproof analyze `
+  --resume /work/phase-1/strong-match/resume.txt `
+  --job /work/phase-1/strong-match/job.txt `
+  --no-ai --no-store --format json --stdout
+```
+
+Pipe a job description instead of a file with `-T` (no TTY):
+
+```powershell
+Get-Content fixtures/phase-1/strong-match/job.txt -Raw |
+  docker compose run -T --rm roleproof analyze `
+    --resume /work/phase-1/strong-match/resume.txt `
+    --stdin-job --no-ai --no-store --format json --stdout
+```
+
+`--build` rebuilds the image when the workspace changes.
 
 ## Workspace
 

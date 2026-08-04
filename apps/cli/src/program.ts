@@ -24,7 +24,11 @@ export interface CliState {
 const require = createRequire(import.meta.url);
 const packageMetadata = require('../package.json') as PackageMetadata;
 
-export function createProgram(output: CliOutput, state: CliState = { exitCode: 0 }): Command {
+export function createProgram(
+  output: CliOutput,
+  state: CliState = { exitCode: 0 },
+  stdin: NodeJS.ReadableStream = process.stdin,
+): Command {
   const program = new Command();
 
   program
@@ -45,7 +49,7 @@ export function createProgram(output: CliOutput, state: CliState = { exitCode: 0
       throw new CommanderError(2, error.code, error.message);
     });
 
-  registerAnalyzeCommand(program, output, state);
+  registerAnalyzeCommand(program, output, state, stdin);
   registerProviderCommands(program, output, state);
   registerServeCommand(program, output);
   registerStorageCommands(program, output);
@@ -53,10 +57,14 @@ export function createProgram(output: CliOutput, state: CliState = { exitCode: 0
   return program;
 }
 
-export async function runCli(args: string[], output: CliOutput): Promise<number> {
+export async function runCli(
+  args: string[],
+  output: CliOutput,
+  stdin: NodeJS.ReadableStream = process.stdin,
+): Promise<number> {
   const state: CliState = { exitCode: 0 };
   try {
-    await createProgram(output, state).parseAsync(args, { from: 'user' });
+    await createProgram(output, state, stdin).parseAsync(args, { from: 'user' });
     return state.exitCode;
   } catch (error) {
     if (error instanceof CommanderError) {

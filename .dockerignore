@@ -1,0 +1,15 @@
+.git
+.gitignore
+.github
+**/dist
+**/node_modules
+**/test
+**/coverage
+**/*.map
+apps/web/dist
+apps/web/test
+docs
+fixtures
+.vscode
+.idea
+*.log

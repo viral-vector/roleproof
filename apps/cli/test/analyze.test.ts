@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -52,17 +53,22 @@ function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-async function invoke(args: string[]): Promise<InvocationResult> {
+async function invoke(args: string[], stdinContent?: string): Promise<InvocationResult> {
   let stdout = '';
   let stderr = '';
-  const exitCode = await runCli(args, {
-    writeOut(message) {
-      stdout += message;
+  const stdin = stdinContent === undefined ? process.stdin : Readable.from([stdinContent]);
+  const exitCode = await runCli(
+    args,
+    {
+      writeOut(message) {
+        stdout += message;
+      },
+      writeErr(message) {
+        stderr += message;
+      },
     },
-    writeErr(message) {
-      stderr += message;
-    },
-  });
+    stdin,
+  );
 
   return { exitCode, stderr, stdout };
 }
@@ -641,5 +647,212 @@ describe('roleproof analyze', () => {
         pointsAwarded: 0,
       }),
     ]);
+  });
+});
+
+describe('roleproof analyze stdin inputs', () => {
+  let directory: string;
+  let resumePath: string;
+  let jobPath: string;
+
+  beforeEach(async () => {
+    directory = await mkdtemp(join(tmpdir(), 'roleproof phase 6 stdin-'));
+    resumePath = join(directory, 'fictional resume.txt');
+    jobPath = join(directory, 'fictional job.txt');
+    await Promise.all([
+      writeFile(resumePath, resumeText, 'utf8'),
+      writeFile(jobPath, jobText, 'utf8'),
+    ]);
+  });
+
+  afterEach(async () => {
+    await rm(directory, { force: true, maxRetries: 3, recursive: true, retryDelay: 50 });
+  });
+
+  const baselineArgs = (rPath: string, jPath: string): string[] => [
+    'analyze',
+    '--resume',
+    rPath,
+    '--job',
+    jPath,
+    '--no-ai',
+    '--no-store',
+    '--format',
+    'json',
+    '--stdout',
+  ];
+
+  function analysisWithoutTimestamp(stdout: string): Record<string, unknown> {
+    const analysis = AnalysisEnvelopeSchema.parse(parseJson(stdout)).analysis;
+    const copy: Record<string, unknown> = { ...analysis };
+    delete copy.generatedAt;
+    return copy;
+  }
+
+  it('reads the job description from stdin with --stdin-job', async () => {
+    const baseline = await invoke(baselineArgs(resumePath, jobPath));
+    expect(baseline.exitCode).toBe(0);
+    expect(baseline.stderr).toBe('');
+
+    const result = await invoke(
+      [
+        'analyze',
+        '--resume',
+        resumePath,
+        '--stdin-job',
+        '--no-ai',
+        '--no-store',
+        '--format',
+        'json',
+        '--stdout',
+      ],
+      jobText,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(analysisWithoutTimestamp(result.stdout)).toEqual(
+      analysisWithoutTimestamp(baseline.stdout),
+    );
+  });
+
+  it('reads the resume from stdin with --stdin-resume', async () => {
+    const baseline = await invoke(baselineArgs(resumePath, jobPath));
+    expect(baseline.exitCode).toBe(0);
+    expect(baseline.stderr).toBe('');
+
+    const result = await invoke(
+      [
+        'analyze',
+        '--stdin-resume',
+        '--job',
+        jobPath,
+        '--no-ai',
+        '--no-store',
+        '--format',
+        'json',
+        '--stdout',
+      ],
+      resumeText,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(analysisWithoutTimestamp(result.stdout)).toEqual(
+      analysisWithoutTimestamp(baseline.stdout),
+    );
+  });
+
+  it('rejects --stdin-resume combined with --resume', async () => {
+    const result = await invoke(
+      [
+        'analyze',
+        '--resume',
+        resumePath,
+        '--stdin-resume',
+        '--job',
+        jobPath,
+        '--no-ai',
+        '--no-store',
+      ],
+      resumeText,
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/resume/i);
+  });
+
+  it('rejects --stdin-job combined with --job', async () => {
+    const result = await invoke(
+      ['analyze', '--resume', resumePath, '--job', jobPath, '--stdin-job', '--no-ai', '--no-store'],
+      jobText,
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/job/i);
+  });
+
+  it('rejects both --stdin-resume and --stdin-job', async () => {
+    const result = await invoke(
+      ['analyze', '--stdin-resume', '--stdin-job', '--no-ai', '--no-store'],
+      'Skills: TypeScript\nBackend Engineer\n',
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/stdin/i);
+  });
+
+  it('requires a resume source when neither --resume nor --stdin-resume is given', async () => {
+    const result = await invoke(['analyze', '--job', jobPath, '--no-ai', '--no-store']);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/resume/i);
+  });
+
+  it('fails cleanly with exit code 3 when a file input is missing and stdin supplies the other input', async () => {
+    const result = await invoke(
+      [
+        'analyze',
+        '--stdin-job',
+        '--resume',
+        join(directory, 'missing resume.txt'),
+        '--no-ai',
+        '--no-store',
+        '--format',
+        'json',
+        '--stdout',
+      ],
+      jobText,
+    );
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/resume/i);
+  });
+
+  it('rejects stdin content that exceeds the plaintext size limit', async () => {
+    const result = await invoke(
+      [
+        'analyze',
+        '--stdin-resume',
+        '--job',
+        jobPath,
+        '--no-ai',
+        '--no-store',
+        '--format',
+        'json',
+        '--stdout',
+      ],
+      `Skills: TypeScript\n${'x'.repeat(2_000_000)}\n`,
+    );
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/limit/i);
+  });
+
+  it('rejects empty stdin content', async () => {
+    const result = await invoke(
+      [
+        'analyze',
+        '--stdin-resume',
+        '--job',
+        jobPath,
+        '--no-ai',
+        '--no-store',
+        '--format',
+        'json',
+        '--stdout',
+      ],
+      '',
+    );
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/no readable text/i);
   });
 });

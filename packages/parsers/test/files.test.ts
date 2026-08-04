@@ -14,6 +14,7 @@ import {
   ParserError,
   parseDocumentFile,
   parseDocumentFileWithMetadata,
+  parsePlaintextBytesWithMetadata,
 } from '../src/index.js';
 import { createDocx } from '@roleproof/test-utils';
 
@@ -188,6 +189,68 @@ describe('parseDocumentFileWithMetadata', () => {
         inputPath: missingPath,
       }),
     );
+    expect(readFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('parsePlaintextBytesWithMetadata', () => {
+  let directory: string;
+
+  beforeEach(async () => {
+    vi.mocked(readFile).mockClear();
+    directory = await mkdtemp(join(tmpdir(), 'roleproof parser stdin-'));
+  });
+
+  afterEach(async () => {
+    await rm(directory, { force: true, maxRetries: 3, recursive: true, retryDelay: 50 });
+  });
+
+  it('parses plaintext bytes without file IO and names the source stdin', () => {
+    const bytes = new TextEncoder().encode('Skills: TypeScript\r\n');
+
+    const parsed = parsePlaintextBytesWithMetadata(bytes, 'resume');
+
+    expect(parsed.document).toMatchObject({
+      text: 'Skills: TypeScript',
+      format: 'plaintext',
+      kind: 'resume',
+    });
+    expect(parsed.contentSha256).toBe(
+      'f8de07670ab30ad56eff58e48971ae289dfbd7671481033b6dcc7061b2313605',
+    );
+    expect(parsed.originalName).toBe('(stdin)');
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
+  it('parses job plaintext bytes with the same contract as a file', async () => {
+    const content = 'Backend Engineer\nRequired: TypeScript\n';
+    const bytes = new TextEncoder().encode(content);
+    const path = join(directory, 'fictional job.txt');
+    await writeFile(path, content, 'utf8');
+
+    const fromBytes = parsePlaintextBytesWithMetadata(bytes, 'job');
+    const fromFile = await parseDocumentFileWithMetadata(path, 'job');
+
+    expect(fromBytes.document).toEqual(fromFile.document);
+    expect(fromBytes.contentSha256).toBe(fromFile.contentSha256);
+    expect(fromBytes.originalName).toBe('(stdin)');
+    expect(fromFile.originalName).toBe('fictional job.txt');
+  });
+
+  it('rejects bytes that exceed the plaintext limit without file IO', () => {
+    const bytes = new TextEncoder().encode('Skills: TypeScript\n');
+
+    let caught: unknown;
+    try {
+      parsePlaintextBytesWithMetadata(bytes, 'resume', {
+        ...DEFAULT_PARSER_CONFIG,
+        maxTextBytes: 10,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toEqual(expect.objectContaining<Partial<ParserError>>({ code: 'size-limit' }));
     expect(readFile).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,16 @@
 # Architecture
 
+## Phase 6 Boundary
+
+Phase 6 adds automation and integration surfaces without changing the deterministic core. Step 6.0
+implements stdin input and the Docker image; batch analysis, the MCP server, GitHub Action, plugin
+API, and webhook output arrive in later Phase 6 steps. The `analyze` command accepts
+`--stdin-job` and `--stdin-resume`, which read plaintext stdin under the same parser limits as
+files, cannot be combined with `--job`/`--resume` or with each other, and produce the same
+analysis envelope as file input. Stdin is consumed before parsing so an abandoned stream read can
+never crash a failing run. The root `Dockerfile` builds the workspace and deploys the CLI as a
+self-contained `node:22-alpine` image running as an unprivileged user.
+
 ## Phase 5 Boundary
 
 Phase 5 provides local deterministic, evidence-aware analysis with SQLite storage, optional
@@ -29,11 +40,12 @@ during builds so packaged analysis does not depend on the caller's working direc
 
 `apps/cli` owns command parsing, stream routing, report-file writes, and process exit behavior. The
 `analyze` action delegates parsing, analysis, storage, and rendering to their packages. It does not
-match or score evidence. Storage is enabled by default; `--no-store` bypasses storage unless an
-explicit profile requires a read-only profile snapshot. The `serve` action starts the local web
-server and does not implement analysis behavior itself; it opens the selected SQLite database,
-injects the storage repositories and database path into the web app, and closes storage when the
-server shuts down.
+match or score evidence. Resume and job sources may be file paths, job URLs, or plaintext stdin
+via `--stdin-resume`/`--stdin-job`; stdin is read completely before parsing starts. Storage is
+enabled by default; `--no-store` bypasses storage unless an explicit profile requires a read-only
+profile snapshot. The `serve` action starts the local web server and does not implement analysis
+behavior itself; it opens the selected SQLite database, injects the storage repositories and
+database path into the web app, and closes storage when the server shuts down.
 
 ### Web
 
@@ -112,7 +124,8 @@ It normalizes plaintext, extracts PDF and DOCX text, rejects blank or binary-lik
 byte, page, image, and timeout limits before or during extraction. PDF.js resources are released
 after completion and on timeout. DOCX text is extracted in memory from the ZIP package with no
 external Office process. Jobs accept plaintext or bounded HTTP(S) pages; resumes accept plaintext,
-PDF, and DOCX. URL-backed jobs use a layered deterministic extractor: `JobPosting` JSON-LD first,
+PDF, and DOCX. `parsePlaintextBytesWithMetadata` parses in-memory plaintext bytes (the stdin path)
+under the same size and encoding limits as file input and reports the source name `(stdin)`. URL-backed jobs use a layered deterministic extractor: `JobPosting` JSON-LD first,
 description-region container heuristics (IDs, `data-qa`, `itemprop`, and description classes, plus
 a Greenhouse `#content` fallback) second, semantic `main`/`article` content third, and a sanitized
 whole-page fallback last. Forms, navigation, footers, and other page chrome are removed before

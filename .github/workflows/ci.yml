@@ -84,3 +84,15 @@ jobs:
             playwright-report/
           if-no-files-found: ignore
           retention-days: 7
+
+  docker-smoke:
+    name: Docker smoke
+    needs: verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build image and smoke test containerized analysis
+        run: node scripts/docker-smoke.mjs

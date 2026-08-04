@@ -2,8 +2,10 @@ import { z } from 'zod';
 
 export const AnalyzeOptionsSchema = z
   .object({
-    resume: z.string().min(1),
-    job: z.string().min(1),
+    resume: z.string().min(1).optional(),
+    job: z.string().min(1).optional(),
+    stdinResume: z.boolean().optional(),
+    stdinJob: z.boolean().optional(),
     format: z.enum(['json', 'markdown', 'both']),
     out: z.string().min(1).optional(),
     stdout: z.boolean(),
@@ -33,6 +35,40 @@ export const AnalyzeOptionsSchema = z
   })
   .strict()
   .superRefine((options, context) => {
+    if (
+      (options.stdinResume !== undefined && options.resume !== undefined) ||
+      (options.stdinResume !== undefined && options.stdinJob !== undefined)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          options.stdinResume !== undefined && options.resume !== undefined
+            ? '--stdin-resume cannot be combined with --resume'
+            : '--stdin-resume cannot be combined with --stdin-job',
+        path: ['stdinResume'],
+      });
+    }
+    if (options.stdinJob !== undefined && options.job !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: '--stdin-job cannot be combined with --job',
+        path: ['stdinJob'],
+      });
+    }
+    if (options.resume === undefined && options.stdinResume === undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Resume source required: --resume or --stdin-resume',
+        path: ['resume'],
+      });
+    }
+    if (options.job === undefined && options.stdinJob === undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Job source required: --job or --stdin-job',
+        path: ['job'],
+      });
+    }
     if (
       options.targetSalaryMin !== undefined &&
       options.targetSalaryMax !== undefined &&

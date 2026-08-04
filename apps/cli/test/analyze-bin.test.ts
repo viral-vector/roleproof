@@ -176,6 +176,63 @@ describe('built roleproof analyze executable', () => {
     expect(output.analysis.matchedRequirements.length).toBeGreaterThan(0);
   });
 
+  it('reads piped stdin for a missing input file only when requested', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        cliEntryPath,
+        'analyze',
+        '--stdin-job',
+        '--resume',
+        join(directory, 'missing resume.txt'),
+        '--no-ai',
+        '--no-store',
+        '--format',
+        'json',
+        '--stdout',
+      ],
+      {
+        encoding: 'utf8',
+        input: 'Backend Engineer\nRequired: TypeScript\n',
+        windowsHide: true,
+      },
+    );
+
+    expect(result.status).toBe(3);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(join(directory, 'missing resume.txt'));
+    expect(result.stderr).not.toContain('ParserError');
+  });
+
+  it('reads the job description from piped stdin', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        cliEntryPath,
+        'analyze',
+        '--stdin-job',
+        '--resume',
+        join(fixtureRoot, 'strong-match', 'resume.txt'),
+        '--no-ai',
+        '--no-store',
+        '--format',
+        'json',
+        '--stdout',
+      ],
+      {
+        encoding: 'utf8',
+        input: 'Backend Engineer\nRequired: TypeScript, Node.js, PostgreSQL\n',
+        windowsHide: true,
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    const output = AnalysisEnvelopeSchema.parse(parseJson(result.stdout));
+    expect(output.analysis.metadata.jobSource).toBeUndefined();
+    expect(output.analysis.matchedRequirements.length).toBeGreaterThan(0);
+  });
+
   it('preserves parsing and hard-blocker exit codes', async () => {
     const missingPath = join(directory, 'missing.txt');
     const parseResult = invoke([

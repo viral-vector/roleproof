@@ -97,3 +97,17 @@ export async function parseDocumentFile(
 ): Promise<ParsedDocument> {
   return (await parseDocumentFileWithMetadata(inputPath, kind, config)).document;
 }
+
+export function parsePlaintextBytesWithMetadata(
+  input: Uint8Array,
+  kind: 'job' | 'resume',
+  config: ParserConfig = DEFAULT_PARSER_CONFIG,
+): ParsedDocumentFile {
+  const validatedConfig = ParserConfigSchema.parse(config);
+  const document = parsePlaintext(input, kind, validatedConfig);
+  return {
+    document,
+    contentSha256: createHash('sha256').update(input).digest('hex'),
+    originalName: '(stdin)',
+  };
+}
