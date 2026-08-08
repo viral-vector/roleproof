@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -28,7 +28,7 @@ function run(executable, args, options = {}, input) {
 }
 
 async function main() {
-  const temporaryDirectory = await mkdtemp(join(tmpdir(), 'roleproof docker-'));
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), 'roleproof-docker-'));
   const resumePath = join(temporaryDirectory, 'resume.txt');
   const jobPath = join(temporaryDirectory, 'job.txt');
   const resumeText =
@@ -36,6 +36,11 @@ async function main() {
   const jobText = 'Backend Engineer\nRequired: TypeScript, Node.js, PostgreSQL\n';
   await writeFile(resumePath, resumeText, 'utf8');
   await writeFile(jobPath, jobText, 'utf8');
+  // CI may use a restrictive umask, while the container runs as the
+  // unprivileged node user rather than the runner user.
+  await chmod(temporaryDirectory, 0o755);
+  await chmod(resumePath, 0o644);
+  await chmod(jobPath, 0o644);
 
   try {
     const docker = process.env.ROLEPROOF_DOCKER ?? 'docker';
