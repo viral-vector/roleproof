@@ -5,9 +5,14 @@ import {
   BatchConfigSchema,
   BatchEnvelopeSchema,
   BatchManifestSchema,
+  AutomationApiManifestSchema,
+  WebhookDeliveryResultSchema,
   DEFAULT_BATCH_CONFIG,
+  DEFAULT_WEBHOOK_CONFIG,
+  type AutomationApiManifest,
   type BatchEnvelope,
   type BatchManifest,
+  type WebhookDeliveryResult,
 } from '../src/index.js';
 
 const analysis = AnalysisResultSchema.parse({
@@ -184,5 +189,49 @@ describe('BatchEnvelopeSchema', () => {
 
   it('infers the BatchEnvelope type from the schema', () => {
     expectTypeOf<BatchEnvelope>().toMatchTypeOf<ReturnType<typeof BatchEnvelopeSchema.parse>>();
+  });
+});
+
+describe('Phase 6 automation contracts', () => {
+  it('defines the stable local automation HTTP API manifest', () => {
+    const manifest: AutomationApiManifest = AutomationApiManifestSchema.parse({
+      schemaVersion: '1.0',
+      mode: 'local',
+      endpoints: [
+        {
+          method: 'GET',
+          path: '/api/automation',
+          description: 'Describe local automation endpoints.',
+        },
+        {
+          method: 'POST',
+          path: '/api/automation/analyze',
+          description: 'Run deterministic analysis without persistence.',
+        },
+      ],
+    });
+
+    expect(manifest.endpoints.map((endpoint) => endpoint.path)).toEqual([
+      '/api/automation',
+      '/api/automation/analyze',
+    ]);
+  });
+
+  it('validates webhook delivery results without accepting private response bodies', () => {
+    const result: WebhookDeliveryResult = WebhookDeliveryResultSchema.parse({
+      schemaVersion: '1.0',
+      url: 'https://automation.example.test/roleproof',
+      status: 'delivered',
+      statusCode: 202,
+    });
+
+    expect(result.status).toBe('delivered');
+    expect(DEFAULT_WEBHOOK_CONFIG.timeoutMs).toBeGreaterThan(0);
+    expect(
+      WebhookDeliveryResultSchema.safeParse({
+        ...result,
+        responseBody: 'must not be part of the contract',
+      }).success,
+    ).toBe(false);
   });
 });

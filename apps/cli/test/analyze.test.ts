@@ -6,7 +6,11 @@ import { Readable } from 'node:stream';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AnalysisEnvelopeSchema, BatchEnvelopeSchema } from '@roleproof/shared';
+import {
+  AnalysisEnvelopeSchema,
+  BatchEnvelopeSchema,
+  WebhookDeliveryResultSchema,
+} from '@roleproof/shared';
 import { closeStorage, createRoleProofRepositories, openStorage } from '@roleproof/storage';
 
 import { runCli } from '../src/program.js';
@@ -1201,5 +1205,115 @@ describe('roleproof analyze batch', () => {
     expect(files).toContain('roleproof-batch-pair-2.json');
     const batchJson = await readFile(join(outDirectory, 'roleproof-batch.json'), 'utf8');
     expect(BatchEnvelopeSchema.parse(JSON.parse(batchJson)).pairs).toHaveLength(2);
+  });
+});
+
+describe('roleproof Phase 6 automation commands', () => {
+  it('delivers a deterministic JSON envelope to an explicitly confirmed webhook', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'roleproof webhook-'));
+    const resumePath = join(directory, 'resume.txt');
+    const jobPath = join(directory, 'job.txt');
+    await Promise.all([
+      writeFile(resumePath, resumeText, 'utf8'),
+      writeFile(jobPath, jobText, 'utf8'),
+    ]);
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('', { status: 202 }));
+    vi.stubGlobal('fetch', fetchImpl as typeof fetch);
+
+    try {
+      const result = await invoke([
+        'analyze',
+        '--resume',
+        resumePath,
+        '--job',
+        jobPath,
+        '--no-ai',
+        '--no-store',
+        '--format',
+        'json',
+        '--stdout',
+        '--webhook',
+        'https://automation.example.test/roleproof',
+        '--confirm-webhook-transmission',
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(AnalysisEnvelopeSchema.parse(parseJson(result.stdout)).schemaVersion).toBe('1.0');
+      expect(result.stderr).toContain('Webhook delivered');
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      const [url, request] = fetchImpl.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://automation.example.test/roleproof');
+      expect(request.method).toBe('POST');
+      expect(typeof request.body).toBe('string');
+      expect(AnalysisEnvelopeSchema.parse(JSON.parse(request.body as string)).schemaVersion).toBe(
+        '1.0',
+      );
+      expect(
+        WebhookDeliveryResultSchema.parse(
+          JSON.parse(result.stderr.split('\n')[0]!.replace('roleproof: ', '')),
+        ).status,
+      ).toBe('delivered');
+    } finally {
+      vi.unstubAllGlobals();
+      await rm(directory, { force: true, maxRetries: 3, recursive: true, retryDelay: 50 });
+    }
+  });
+
+  it('requires explicit confirmation before sending webhook output off machine', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'roleproof webhook confirm-'));
+    const resumePath = join(directory, 'resume.txt');
+    const jobPath = join(directory, 'job.txt');
+    await Promise.all([
+      writeFile(resumePath, resumeText, 'utf8'),
+      writeFile(jobPath, jobText, 'utf8'),
+    ]);
+
+    try {
+      const result = await invoke([
+        'analyze',
+        '--resume',
+        resumePath,
+        '--job',
+        jobPath,
+        '--no-ai',
+        '--no-store',
+        '--webhook',
+        'https://automation.example.test/roleproof',
+      ]);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toMatch(/confirm-webhook-transmission/i);
+    } finally {
+      await rm(directory, { force: true, maxRetries: 3, recursive: true, retryDelay: 50 });
+    }
+  });
+
+  it('exposes a minimal MCP JSON-RPC server over stdio', async () => {
+    const request = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'roleproof_analyze',
+        arguments: {
+          resumeText,
+          jobText,
+          format: 'json',
+        },
+      },
+    };
+
+    const result = await invoke(['mcp'], `${JSON.stringify(request)}\n`);
+    const response = JSON.parse(result.stdout.trim()) as {
+      result: { content: Array<{ type: string; text: string }> };
+    };
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(response.result.content[0]?.type).toBe('text');
+    expect(
+      AnalysisEnvelopeSchema.parse(JSON.parse(response.result.content[0]!.text)).schemaVersion,
+    ).toBe('1.0');
   });
 });

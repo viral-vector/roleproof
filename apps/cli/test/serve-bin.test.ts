@@ -78,7 +78,7 @@ describe('built roleproof serve executable', () => {
           model: 'phi4-mini:latest',
           destination: 'local',
           baseUrl: 'http://localhost:11434/v1',
-          structuredOutputMode: 'json-schema',
+          structuredOutputMode: 'json-object',
         },
         databasePath,
       });

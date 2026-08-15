@@ -72,8 +72,61 @@ export const BatchEnvelopeSchema = z
   })
   .strict();
 
+export const AutomationHttpMethodSchema = z.enum(['GET', 'POST']);
+
+export const AutomationApiEndpointSchema = z
+  .object({
+    method: AutomationHttpMethodSchema,
+    path: z.string().regex(/^\/api\/automation(?:\/[-a-z]+)*$/u),
+    description: nonBlankStringSchema.max(255),
+  })
+  .strict();
+
+export const AutomationApiManifestSchema = z
+  .object({
+    schemaVersion: z.literal('1.0'),
+    mode: z.literal('local'),
+    endpoints: z.array(AutomationApiEndpointSchema).min(1),
+  })
+  .strict();
+
+export const WebhookConfigSchema = z
+  .object({
+    timeoutMs: z.number().int().min(1_000).max(60_000),
+  })
+  .strict();
+
+export const DEFAULT_WEBHOOK_CONFIG: Readonly<WebhookConfig> = Object.freeze(
+  WebhookConfigSchema.parse({ timeoutMs: 10_000 }),
+);
+
+export const WebhookDeliveryResultSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      schemaVersion: z.literal('1.0'),
+      url: z.string().url().max(2048),
+      status: z.literal('delivered'),
+      statusCode: z.number().int().min(200).max(299),
+    })
+    .strict(),
+  z
+    .object({
+      schemaVersion: z.literal('1.0'),
+      url: z.string().url().max(2048),
+      status: z.literal('failed'),
+      statusCode: z.number().int().min(100).max(599).optional(),
+      error: nonBlankStringSchema.max(255),
+    })
+    .strict(),
+]);
+
 export type BatchManifestPair = z.infer<typeof BatchManifestPairSchema>;
 export type BatchManifest = z.infer<typeof BatchManifestSchema>;
 export type BatchConfig = z.infer<typeof BatchConfigSchema>;
 export type BatchPairResult = z.infer<typeof BatchPairResultSchema>;
 export type BatchEnvelope = z.infer<typeof BatchEnvelopeSchema>;
+export type AutomationHttpMethod = z.infer<typeof AutomationHttpMethodSchema>;
+export type AutomationApiEndpoint = z.infer<typeof AutomationApiEndpointSchema>;
+export type AutomationApiManifest = z.infer<typeof AutomationApiManifestSchema>;
+export type WebhookConfig = z.infer<typeof WebhookConfigSchema>;
+export type WebhookDeliveryResult = z.infer<typeof WebhookDeliveryResultSchema>;

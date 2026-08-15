@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LocalAnalyzeResponseSchema, LocalResumeParseResponseSchema } from '@roleproof/shared';
+import {
+  AutomationApiManifestSchema,
+  LocalAnalyzeResponseSchema,
+  LocalResumeParseResponseSchema,
+} from '@roleproof/shared';
 import { createDocx, createPdf } from '@roleproof/test-utils';
 
 import { createLocalWebApp, DEFAULT_SERVE_HOST, DEFAULT_SERVE_PORT } from '../src/server.js';
@@ -117,6 +121,49 @@ describe('local web server foundation', () => {
         accountRequired: false,
         cloudRequired: false,
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('exposes a stable local automation API manifest', async () => {
+    const app = createLocalWebApp();
+
+    try {
+      const response = await app.inject({ method: 'GET', url: '/api/automation' });
+      const body = AutomationApiManifestSchema.parse(JSON.parse(response.body));
+
+      expect(response.statusCode).toBe(200);
+      expect(body.mode).toBe('local');
+      expect(body.endpoints).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ method: 'POST', path: '/api/automation/analyze' }),
+        ]),
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('runs automation HTTP analysis without persisting or requiring storage', async () => {
+    const app = createLocalWebApp();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/automation/analyze',
+        payload: {
+          schemaVersion: '1.0',
+          resumeText: 'Fictional Candidate\nExperience: Built TypeScript APIs with Node.js.',
+          jobText: 'Required: TypeScript\nRequired: Node.js',
+        },
+      });
+      const body = LocalAnalyzeResponseSchema.parse(JSON.parse(response.body));
+
+      expect(response.statusCode).toBe(200);
+      expect(body.schemaVersion).toBe('1.0');
+      expect(body.analysis.metadata.mode).toBe('deterministic');
+      expect(body.analysis.matchedRequirements.length).toBeGreaterThan(0);
     } finally {
       await app.close();
     }

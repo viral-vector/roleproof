@@ -25,7 +25,7 @@ describe('built roleproof executable', () => {
     const result = invoke(['--version']);
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe('0.5.0\n');
+    expect(result.stdout).toBe('0.6.1\n');
     expect(result.stderr).toBe('');
   });
 

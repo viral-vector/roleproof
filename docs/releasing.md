@@ -28,7 +28,7 @@ E2E validation starts a dedicated local server on port 4174 against a fresh temp
 in the system temporary directory. The `test:e2e` script removes those `roleproof-e2e-*.db` files
 after each run via `scripts/e2e-db-cleanup.mjs`.
 
-Pack and install the eight packages in a temporary directory before publishing. Verify that the
+Pack and install the nine public packages in a temporary directory before publishing. Verify that the
 installed `roleproof` executable prints the release version and completes deterministic JSON and
 Markdown analyses without access to the repository source tree.
 
@@ -43,6 +43,7 @@ pnpm --filter @roleproof/storage publish --access public
 pnpm --filter @roleproof/core publish --access public
 pnpm --filter @roleproof/parsers publish --access public
 pnpm --filter @roleproof/reporters publish --access public
+pnpm --filter @roleproof/plugin-api publish --access public
 pnpm --filter @roleproof/web publish --access public
 pnpm --filter @roleproof/cli publish --access public
 ```
@@ -56,6 +57,7 @@ npm view @roleproof/storage version
 npm view @roleproof/core version
 npm view @roleproof/parsers version
 npm view @roleproof/reporters version
+npm view @roleproof/plugin-api version
 npm view @roleproof/web version
 npm view @roleproof/cli version
 ```

@@ -1,6 +1,6 @@
 {
   "name": "@roleproof/cli",
-  "version": "0.5.0",
+  "version": "0.6.1",
   "private": false,
   "description": "RoleProof command-line interface",
   "license": "MIT",
@@ -37,6 +37,7 @@
   "dependencies": {
     "@roleproof/core": "workspace:*",
     "@roleproof/parsers": "workspace:*",
+    "@roleproof/plugin-api": "workspace:*",
     "@roleproof/providers": "workspace:*",
     "@roleproof/reporters": "workspace:*",
     "@roleproof/shared": "workspace:*",

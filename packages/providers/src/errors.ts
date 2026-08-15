@@ -18,15 +18,23 @@ export class ProviderError extends Error implements SanitizedProviderError {
   override readonly name = 'ProviderError';
   readonly code: ProviderErrorCode;
   readonly operation: ProviderOperation;
+  readonly detail?: string;
 
-  constructor(code: ProviderErrorCode, operation: ProviderOperation) {
+  constructor(code: ProviderErrorCode, operation: ProviderOperation, detail?: string) {
     super(SAFE_MESSAGES[code]);
     this.code = code;
     this.operation = operation;
+    if (detail !== undefined) this.detail = detail;
   }
 
   toJSON(): SanitizedProviderError {
-    return { name: this.name, code: this.code, operation: this.operation, message: this.message };
+    return {
+      name: this.name,
+      code: this.code,
+      operation: this.operation,
+      message: this.message,
+      ...(this.detail === undefined ? {} : { detail: this.detail }),
+    };
   }
 }
 

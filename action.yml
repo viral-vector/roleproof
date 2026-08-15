@@ -1,0 +1,36 @@
+name: RoleProof Analyze
+description: Run deterministic RoleProof analysis in GitHub Actions without AI providers.
+inputs:
+  resume-path:
+    description: Path to a fictional or repository-local resume file.
+    required: true
+  job-path:
+    description: Path to a repository-local job description file.
+    required: true
+  output-format:
+    description: Output format passed to roleproof analyze.
+    required: false
+    default: json
+  output-path:
+    description: Optional directory for report files.
+    required: false
+runs:
+  using: composite
+  steps:
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+    - name: Build RoleProof
+      shell: bash
+      run: pnpm build
+    - name: Run deterministic RoleProof analysis
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.output-path }}" ]; then
+          pnpm exec roleproof analyze --resume "${{ inputs.resume-path }}" --job "${{ inputs.job-path }}" --no-ai --no-store --format "${{ inputs.output-format }}" --out "${{ inputs.output-path }}"
+        else
+          pnpm exec roleproof analyze --resume "${{ inputs.resume-path }}" --job "${{ inputs.job-path }}" --no-ai --no-store --format "${{ inputs.output-format }}" --stdout
+        fi

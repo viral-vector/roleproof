@@ -1,8 +1,8 @@
 {
-  "name": "@roleproof/providers",
+  "name": "@roleproof/plugin-api",
   "version": "0.6.1",
   "private": false,
-  "description": "Provider-neutral AI contracts and orchestration for RoleProof",
+  "description": "RoleProof automation plugin API",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -20,7 +20,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/viral-vector/roleproof.git",
-    "directory": "packages/providers"
+    "directory": "packages/plugin-api"
   },
   "publishConfig": {
     "access": "public"
@@ -31,6 +31,9 @@
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@roleproof/core": "workspace:*",
+    "@roleproof/parsers": "workspace:*",
+    "@roleproof/reporters": "workspace:*",
     "@roleproof/shared": "workspace:*"
   }
 }

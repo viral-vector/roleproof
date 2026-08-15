@@ -366,17 +366,47 @@ export class OpenAICompatibleProvider implements AIProvider {
     assertContext(this.config, this.endpointOrigin, context.manifest, originalInput, operation);
     const aliases = aliasProviderInput(context.input);
     const serializedInput = JSON.stringify(aliases.input);
-    const responseFormat =
-      this.config.structuredOutputMode === 'json-schema'
-        ? {
-            type: 'json_schema',
-            json_schema: {
-              name: operation.replaceAll('-', '_'),
-              strict: true,
-              schema: constrainedOutputSchema(operation, aliases.input),
-            },
-          }
-        : { type: 'json_object' };
+    const useSchemaMode = this.config.structuredOutputMode === 'json-schema';
+    const primaryFormat = useSchemaMode
+      ? {
+          type: 'json_schema' as const,
+          json_schema: {
+            name: operation.replaceAll('-', '_'),
+            strict: true,
+            schema: constrainedOutputSchema(operation, aliases.input),
+          },
+        }
+      : { type: 'json_object' as const };
+
+    try {
+      return await this.#fetchCompletion(
+        operation,
+        context,
+        serializedInput,
+        primaryFormat,
+        aliases,
+      );
+    } catch (error) {
+      if (useSchemaMode && error instanceof ProviderError && error.code === 'unavailable') {
+        return await this.#fetchCompletion(
+          operation,
+          context,
+          serializedInput,
+          { type: 'json_object' as const },
+          aliases,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async #fetchCompletion<T extends OperationOutput>(
+    operation: Exclude<ProviderOperation, 'health-check'>,
+    context: ProviderCallContext<unknown>,
+    serializedInput: string,
+    responseFormat: Record<string, unknown>,
+    aliases: ReturnType<typeof aliasProviderInput>,
+  ): Promise<ProviderResult<T>> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (this.#apiKey !== null) headers.authorization = `Bearer ${this.#apiKey}`;
     const response = await fetchJson(

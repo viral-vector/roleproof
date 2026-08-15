@@ -363,6 +363,43 @@ describe('Phase 3 provider CLI integration', () => {
     );
   });
 
+  it('prints sanitized compatible provider failure details without leaking private input', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Response(
+            JSON.stringify({ error: 'model does not support response_format json_schema' }),
+            {
+              status: 400,
+            },
+          ),
+      ),
+    );
+
+    const result = await invoke([
+      ...base(),
+      '--provider',
+      'openai-compatible',
+      '--model',
+      'local-model',
+      '--destination',
+      'local',
+      '--base-url',
+      'http://localhost:11434/v1',
+      '--structured-output-mode',
+      'json-object',
+    ]);
+
+    expect(result.exitCode).toBe(4);
+    expect(result.stderr).toContain(
+      'provider enhancement failed (unavailable during analyze-requirements)',
+    );
+    expect(result.stderr).toContain('model does not support response_format json_schema');
+    expect(result.stderr).not.toContain(resume);
+    expect(result.stderr).not.toContain(job);
+  });
+
   it('uses fallback exit 4 instead of blocker exit 10 on provider failure', async () => {
     await writeFile(jobPath, `${job}\nSalary: USD 80000-100000 annually`, 'utf8');
     vi.stubGlobal(

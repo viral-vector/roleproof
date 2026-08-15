@@ -1,6 +1,6 @@
 {
   "name": "roleproof",
-  "version": "0.0.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Local-first, evidence-based job-fit analysis",
   "license": "MIT",

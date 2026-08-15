@@ -27,6 +27,7 @@ import {
 import {
   renderEnhancedJson,
   renderEnhancedMarkdown,
+  renderBatchJson,
   renderJson,
   renderMarkdown,
 } from '@roleproof/reporters';
@@ -45,6 +46,7 @@ import {
   BatchManifestSchema,
   CandidateContextSchema,
   DEFAULT_BATCH_CONFIG,
+  WebhookDeliveryResultSchema,
   type AnalysisResult,
   type BatchManifest,
   type CandidateProfile,
@@ -150,6 +152,55 @@ function isJobUrl(value: string): boolean {
   }
 }
 
+async function deliverWebhook(
+  options: AnalyzeOptions,
+  body: string,
+  output: CliOutput,
+): Promise<void> {
+  if (options.webhook === undefined) return;
+  let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.webhookTimeoutMs);
+  try {
+    response = await fetch(options.webhook, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      body,
+      signal: controller.signal,
+    });
+  } catch {
+    const result = WebhookDeliveryResultSchema.parse({
+      schemaVersion: '1.0',
+      url: options.webhook,
+      status: 'failed',
+      error: 'Webhook delivery failed. Check the endpoint and network access.',
+    });
+    output.writeErr(`roleproof: ${JSON.stringify(result)}\n`);
+    throw new CliError(1, 'Webhook delivery failed. Check the endpoint and network access.');
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!response.ok) {
+    const result = WebhookDeliveryResultSchema.parse({
+      schemaVersion: '1.0',
+      url: options.webhook,
+      status: 'failed',
+      statusCode: response.status,
+      error: 'Webhook endpoint returned a non-success status.',
+    });
+    output.writeErr(`roleproof: ${JSON.stringify(result)}\n`);
+    throw new CliError(1, 'Webhook endpoint returned a non-success status.');
+  }
+  const result = WebhookDeliveryResultSchema.parse({
+    schemaVersion: '1.0',
+    url: options.webhook,
+    status: 'delivered',
+    statusCode: response.status,
+  });
+  output.writeErr(`roleproof: ${JSON.stringify(result)}\n`);
+  output.writeErr('roleproof: Webhook delivered.\n');
+}
+
 function writeTransmissionPreview(provider: AIProvider, output: CliOutput): void {
   const config = provider.config;
   const redactions = [
@@ -253,7 +304,13 @@ async function enhanceBaseline(
       durationMs: Math.max(0, completed.getTime() - started.getTime()),
     });
   }
-  output.writeErr('RoleProof: provider enhancement failed; using deterministic fallback.\n');
+  const errorSummary =
+    result.error === undefined
+      ? ''
+      : ` (${result.error.code} during ${result.error.operation})${result.error.detail === undefined ? '' : `: ${result.error.detail}`}`;
+  output.writeErr(
+    `RoleProof: provider enhancement failed${errorSummary}; using deterministic fallback.\n`,
+  );
   return {
     reports: { json: renderJson(analysis), markdown: renderMarkdown(analysis) },
     providerFailed: true,
@@ -572,6 +629,7 @@ async function runBatchAnalysis(
 
     const envelope = BatchEnvelopeSchema.parse({ schemaVersion: '1.0', pairs: results });
     await writeBatchOutput(options, envelope, output);
+    await deliverWebhook(options, renderBatchJson(envelope), output);
     const failed = results.filter((result) => result.status === 'failed');
     if (failed.length === 0) {
       state.exitCode = 0;
@@ -631,6 +689,12 @@ export function registerAnalyzeCommand(
     .option('--redact-term <term>', 'Redact a selected term (repeatable)', collect, [])
     .option('--manifest <path>', 'JSON manifest of resume/job pairs for batch analysis')
     .option('--concurrency <number>', 'Maximum concurrent batch analyses', '4')
+    .option('--webhook <url>', 'POST the JSON analysis or batch envelope to an explicit webhook')
+    .option(
+      '--confirm-webhook-transmission',
+      'Confirm sending career analysis data to a non-local webhook URL',
+    )
+    .option('--webhook-timeout-ms <number>', 'Webhook delivery timeout in milliseconds')
     .action(async (rawOptions: unknown, command: Command) => {
       const parsedOptions = AnalyzeOptionsSchema.safeParse(rawOptions);
       if (!parsedOptions.success) {
@@ -689,6 +753,7 @@ export function registerAnalyzeCommand(
             undefined,
           );
           await writeAnalysisOutput(options, outcome.reports, output);
+          await deliverWebhook(options, outcome.reports.json, output);
           state.exitCode = outcome.providerFailed
             ? 4
             : outcome.analysis.hardBlockers.length > 0
@@ -723,6 +788,7 @@ export function registerAnalyzeCommand(
           database = undefined;
         }
         await writeAnalysisOutput(options, outcome.reports, output);
+        await deliverWebhook(options, outcome.reports.json, output);
         state.exitCode = outcome.providerFailed
           ? 4
           : outcome.analysis.hardBlockers.length > 0

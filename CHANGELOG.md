@@ -1,9 +1,9 @@
 # Changelog
 
-## 0.6.1 - unreleased
+## 0.6.1 - 2026-08-14
 
-Phase 6 step 6.1: batch analysis. The analysis envelope and CLI contracts are unchanged except for
-the new input flags.
+Phase 6 steps 6.1 and 6.2: batch analysis and the remaining local automation surfaces. The
+deterministic analysis envelope remains version `1.0`; new automation envelopes are additive.
 
 ### Batch analysis
 
@@ -26,6 +26,37 @@ the new input flags.
 
 - Added `BatchManifestSchema`, `BatchEnvelopeSchema`, and `BatchConfigSchema` to `@roleproof/shared`
   with valid and invalid fixture coverage.
+- Added `AutomationApiManifestSchema`, `WebhookDeliveryResultSchema`, and webhook configuration
+  defaults to document local HTTP automation and content-free webhook diagnostics.
+
+### Automation integrations
+
+- Added stable local automation endpoints: `GET /api/automation` and deterministic no-store
+  `POST /api/automation/analyze`.
+- Added `roleproof mcp`, a local stdio JSON-RPC command exposing the `roleproof_analyze` tool for
+  plaintext deterministic analysis.
+- Added `@roleproof/plugin-api` with `analyzeText` and `renderAnalysis` for local plugin hosts.
+- Added explicit `--webhook`, `--confirm-webhook-transmission`, and `--webhook-timeout-ms` support
+  for posting JSON analysis or batch envelopes without polluting JSON stdout.
+- Added root `action.yml`, a composite GitHub Action that runs deterministic `roleproof analyze`.
+
+### Providers
+
+- Error responses from OpenAI-compatible providers now surface a short sanitized provider message
+  (for example "this model does not support pdf input" style refusals) instead of only a generic
+  "Provider is unavailable" message.
+- When a provider rejects `json_schema` structured output, the compatible adapter retries the same
+  request once with `json_object` mode before giving up, so small local models (such as Ollama
+  qwen2.5:3b) can still be used.
+- CLI and local web provider fallback diagnostics now include the sanitized provider error code,
+  operation, and safe detail on stderr/server logs while preserving deterministic fallback output.
+- Fresh local web AI defaults now use `json_object` mode for OpenAI-compatible providers, matching
+  the provider package default and Ollama guidance.
+
+### Dependency maintenance
+
+- Updated Fastify to `5.12.0` so the packaged local web server no longer installs with known
+  production Fastify advisories in a clean npm tarball smoke test.
 
 ## 0.6.0 - 2026-08-04
 

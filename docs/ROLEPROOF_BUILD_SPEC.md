@@ -988,11 +988,16 @@ This is the first résumé-worthy release.
 - [x] Batch analysis — `--manifest` with a `{ schemaVersion, pairs }` JSON file, bounded
   `--concurrency`, per-pair failures recorded in a schema-versioned batch envelope, and per-pair
   reports via `--out` (v0.6.0 step 6.1)
-- [ ] Local HTTP API (later Phase 6 step)
-- [ ] MCP server (later Phase 6 step)
-- [ ] GitHub Action (later Phase 6 step)
-- [ ] Plugin API (later Phase 6 step)
-- [ ] Webhook output (later Phase 6 step)
+- [x] Local HTTP API — `GET /api/automation` and deterministic no-store
+  `POST /api/automation/analyze` (v0.6.1 step 6.2)
+- [x] MCP server — `roleproof mcp` exposes `roleproof_analyze` over local stdio JSON-RPC
+  (v0.6.1 step 6.2)
+- [x] GitHub Action — root `action.yml` composite deterministic analysis action
+  (v0.6.1 step 6.2)
+- [x] Plugin API — `@roleproof/plugin-api` with `analyzeText` and `renderAnalysis`
+  (v0.6.1 step 6.2)
+- [x] Webhook output — explicit `--webhook` JSON delivery with non-local confirmation
+  (v0.6.1 step 6.2)
 
 Example:
 
@@ -1027,7 +1032,7 @@ exit 0. Batch mode is deterministic-only (rejects provider options), stores by d
 
 ### Release
 
-`v0.6.0`
+`v0.6.1`
 
 ---
 

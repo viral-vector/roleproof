@@ -25,6 +25,7 @@ import {
 import { renderMarkdown } from '@roleproof/reporters';
 import {
   CandidateContextSchema,
+  AutomationApiManifestSchema,
   EnhancedAnalysisEnvelopeSchema,
   LocalAnalyzeRequestSchema,
   LocalAnalyzeResponseSchema,
@@ -101,6 +102,23 @@ export interface LocalHealthResponse {
   accountRequired: false;
   cloudRequired: false;
 }
+
+const AUTOMATION_API_MANIFEST = AutomationApiManifestSchema.parse({
+  schemaVersion: '1.0',
+  mode: 'local',
+  endpoints: [
+    {
+      method: 'GET',
+      path: '/api/automation',
+      description: 'Describe stable local automation endpoints.',
+    },
+    {
+      method: 'POST',
+      path: '/api/automation/analyze',
+      description: 'Run deterministic plaintext analysis without persistence or provider calls.',
+    },
+  ],
+});
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -279,6 +297,39 @@ export function createLocalWebApp(options: LocalWebAppOptions = {}): FastifyInst
     accountRequired: false,
     cloudRequired: false,
   }));
+
+  app.get('/api/automation', () => AUTOMATION_API_MANIFEST);
+
+  app.post('/api/automation/analyze', async (request, reply) => {
+    const parsed = LocalAnalyzeRequestSchema.safeParse(request.body);
+    if (!parsed.success || parsed.data.mode === 'ai-enhanced') {
+      return reply.code(400).send({ error: 'Invalid automation analyze request.' });
+    }
+
+    try {
+      const resume = parsePlaintext(parsed.data.resumeText, 'resume');
+      const jobInput = resolveJobTextForStorage(parsed.data);
+      const jobRequest =
+        parsed.data.jobUrl === undefined
+          ? { jobText: jobInput }
+          : { jobText: jobInput, jobUrl: parsed.data.jobUrl };
+      const { job, jobSource } = await resolveJobInput(jobRequest, jobUrlFetch);
+      let analysis: AnalysisResult = analyzeDeterministic({
+        resume,
+        job,
+        candidateContext: emptyCandidateContext(),
+      });
+      if (jobSource !== undefined) {
+        analysis = { ...analysis, metadata: { ...analysis.metadata, jobSource } };
+      }
+      return reply.send(LocalAnalyzeResponseSchema.parse({ schemaVersion: '1.0', analysis }));
+    } catch (error) {
+      if (error instanceof ParserError) {
+        return reply.code(400).send({ error: 'Invalid automation analyze request.' });
+      }
+      throw error;
+    }
+  });
 
   app.post('/api/analyze', async (request, reply) => {
     const parsed = LocalAnalyzeRequestSchema.safeParse(request.body);
@@ -838,7 +889,7 @@ function defaultLocalAiSettings(settings: LocalSettings): LocalSettings {
     model: 'phi4-mini:latest',
     destination: 'local',
     baseUrl: 'http://localhost:11434/v1',
-    structuredOutputMode: 'json-schema',
+    structuredOutputMode: 'json-object',
   };
 }
 
@@ -911,7 +962,8 @@ async function recordProviderFailure(
 ): Promise<void> {
   const operation = result.error?.operation ?? 'analyze-requirements';
   const code = result.error?.code ?? 'configuration';
-  console.error(`[roleproof] provider enhancement failed (${code}) during ${operation}.`);
+  const detail = result.error?.detail === undefined ? '' : `: ${result.error.detail}`;
+  console.error(`[roleproof] provider enhancement failed (${code}) during ${operation}${detail}.`);
   await repositories.providerCalls.recordFailure({
     baselineAnalysisId,
     provider: config.provider,

@@ -100,6 +100,41 @@ responses use the enhanced envelope version `2.0` with `aiEnhancement`. If provi
 unavailable or invalid, the route returns the unchanged deterministic `1.0` envelope and records the
 provider failure when storage is enabled. Responses never include stored provider settings.
 
+Phase 6 adds stable local automation endpoints. `GET /api/automation` returns an
+`AutomationApiManifestSchema` envelope:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "mode": "local",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/automation/analyze",
+      "description": "Run deterministic plaintext analysis without persistence or provider calls."
+    }
+  ]
+}
+```
+
+`POST /api/automation/analyze` accepts the deterministic local analyze request shape and returns the
+canonical `1.0` analysis envelope. It does not persist content and rejects AI-enhanced requests.
+
+Webhook diagnostics use `WebhookDeliveryResultSchema` on stderr only; JSON stdout remains the
+requested analysis or batch envelope. The success shape is:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "url": "https://automation.example.test/roleproof",
+  "status": "delivered",
+  "statusCode": 202
+}
+```
+
+Failure diagnostics may include a status code and a content-free error, but never include webhook
+response bodies.
+
 URL-backed analyses include `analysis.metadata.jobSource` when retrieval succeeds:
 
 ```json

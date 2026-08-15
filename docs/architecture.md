@@ -3,16 +3,20 @@
 ## Phase 6 Boundary
 
 Phase 6 adds automation and integration surfaces without changing the deterministic core. Step 6.0
-implements stdin input and the Docker image; step 6.1 implements batch analysis. The MCP server,
-GitHub Action, plugin API, local HTTP API, and webhook output arrive in later Phase 6 steps. The
+implements stdin input and the Docker image, step 6.1 implements batch analysis, and step 6.2
+completes the local automation surface with a stable local HTTP API, MCP stdio command, composite
+GitHub Action, plugin API package, and explicit webhook output. The
 `analyze` command accepts `--stdin-job` and `--stdin-resume`, which read plaintext stdin under the
 same parser limits as files, cannot be combined with `--job`/`--resume` or with each other, and
 produce the same analysis envelope as file input. Stdin is consumed before parsing so an abandoned
 stream read can never crash a failing run. `--manifest` reads a schema-versioned JSON file of
 resume/job pairs whose paths resolve relative to the manifest, runs pairs through the same
 deterministic pipeline with bounded concurrency, and returns a schema-versioned batch envelope
-whose per-pair results stay in manifest order. The root `Dockerfile` builds the workspace and
-deploys the CLI as a self-contained `node:22-alpine` image running as an unprivileged user.
+whose per-pair results stay in manifest order. `--webhook` posts the JSON envelope only after an
+explicit user-supplied URL, and non-local destinations require `--confirm-webhook-transmission`.
+The root `Dockerfile` builds the workspace and deploys the CLI as a self-contained `node:22-alpine`
+image running as an unprivileged user. `packages/plugin-api` offers deterministic text analysis and
+validated rendering for local plugins without storage, providers, or network access.
 
 ## Phase 5 Boundary
 
@@ -23,6 +27,9 @@ implemented dependency direction is:
 ```text
 apps/cli
   |--> apps/web
+  |--> packages/plugin-api --> packages/parsers ----|
+  |                         --> packages/core -------|--> packages/shared
+  |                         --> packages/reporters --|
   |--> packages/parsers ----|
   |--> packages/core -------|--> packages/shared
   |--> packages/reporters --|

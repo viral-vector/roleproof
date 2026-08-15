@@ -340,13 +340,19 @@ describe('OpenAI adapter', () => {
   ] as const)('maps HTTP %s without leaking response bodies', async (status, code) => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(new Response('person@example.test Project Cobalt', { status }));
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response('person@example.test Project Cobalt resume content', { status }),
+        ),
+      );
     const provider = new OpenAIProvider(openAIConfig, { apiKey: 'test-key' }, fetchMock);
     const call = context(openAIConfig, 'https://api.openai.com/v1/responses', requirementInput, []);
     await expect(provider.analyzeRequirements(call)).rejects.toMatchObject({ code });
     await provider.analyzeRequirements(call).catch((error: ProviderError) => {
-      expect(JSON.stringify(error)).not.toContain('person@example.test');
-      expect(JSON.stringify(error)).not.toContain('Project Cobalt');
+      const serialized = JSON.stringify(error);
+      expect(serialized).not.toContain('person@example.test');
+      expect(serialized).not.toContain('Project Cobalt');
+      expect(serialized).not.toContain('resume content');
     });
   });
 
@@ -707,22 +713,78 @@ describe('OpenAI-compatible adapter', () => {
     [401, 'auth'],
     [429, 'rate-limit'],
     [503, 'unavailable'],
-  ] as const)('maps compatible HTTP %s to %s', async (status, code) => {
+  ] as const)(
+    'maps compatible HTTP %s to %s and captures a safe provider error detail',
+    async (status, code) => {
+      const responseBody = '{"error": "model does not support pdf input"}';
+      const provider = new OpenAICompatibleProvider(
+        compatibleConfig,
+        null,
+        vi
+          .fn<typeof fetch>()
+          .mockImplementation(() => Promise.resolve(new Response(responseBody, { status }))),
+      );
+      await expect(
+        provider.analyzeRequirements(
+          context(
+            compatibleConfig,
+            'http://localhost:11434/v1/chat/completions',
+            requirementInput,
+            [],
+          ),
+        ),
+      ).rejects.toMatchObject({ code });
+      await provider
+        .analyzeRequirements(
+          context(
+            compatibleConfig,
+            'http://localhost:11434/v1/chat/completions',
+            requirementInput,
+            [],
+          ),
+        )
+        .catch((error: ProviderError) => {
+          expect(error.detail).toBe('model does not support pdf input');
+          expect(error.code).toBe(code);
+          expect(typeof error.message).toBe('string');
+        });
+    },
+  );
+
+  it('does not serialize private-looking compatible provider error details', async () => {
     const provider = new OpenAICompatibleProvider(
       compatibleConfig,
       null,
-      vi.fn<typeof fetch>().mockResolvedValue(new Response('private', { status })),
+      vi.fn<typeof fetch>().mockImplementation(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                message: 'person@example.test Project Cobalt resume content was rejected',
+              },
+            }),
+            { status: 400 },
+          ),
+        ),
+      ),
     );
-    await expect(
-      provider.analyzeRequirements(
+
+    await provider
+      .analyzeRequirements(
         context(
           compatibleConfig,
           'http://localhost:11434/v1/chat/completions',
           requirementInput,
           [],
         ),
-      ),
-    ).rejects.toMatchObject({ code });
+      )
+      .catch((error: ProviderError) => {
+        const serialized = JSON.stringify(error);
+        expect(serialized).not.toContain('person@example.test');
+        expect(serialized).not.toContain('Project Cobalt');
+        expect(serialized).not.toContain('resume content');
+        expect(error.detail).toBeUndefined();
+      });
   });
 
   it.each([
@@ -748,6 +810,33 @@ describe('OpenAI-compatible adapter', () => {
         ),
       ),
     ).rejects.toMatchObject({ code });
+  });
+
+  it('falls back from json-schema to json-object when the provider returns unavailable', async () => {
+    const config = { ...compatibleConfig, structuredOutputMode: 'json-schema' as const };
+    let callCount = 0;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(() => {
+      callCount += 1;
+      if (callCount === 1) {
+        return Promise.resolve(new Response('unsupported format', { status: 400 }));
+      }
+      return Promise.resolve(compatibleResponse(outputs.requirements));
+    });
+    const provider = new OpenAICompatibleProvider(config, null, fetchMock);
+    const call = context(
+      config,
+      'http://localhost:11434/v1/chat/completions',
+      requirementInput,
+      [],
+    );
+    const result = await provider.analyzeRequirements(call);
+    expect(result.output).toEqual(outputs.requirements);
+    expect(callCount).toBe(2);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string) as Record<
+      string,
+      unknown
+    >;
+    expect(secondBody.response_format).toEqual({ type: 'json_object' });
   });
 
   it('reports health, missing models, structured capability, and unavailable endpoints safely', async () => {

@@ -1,6 +1,15 @@
 import { z } from 'zod';
 
-import { DEFAULT_BATCH_CONFIG } from '@roleproof/shared';
+import { DEFAULT_BATCH_CONFIG, DEFAULT_WEBHOOK_CONFIG } from '@roleproof/shared';
+
+function isLocalWebhookUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
 
 export const AnalyzeOptionsSchema = z
   .object({
@@ -44,6 +53,15 @@ export const AnalyzeOptionsSchema = z
     redactEmployer: z.boolean().optional(),
     redactClearance: z.boolean().optional(),
     redactTerm: z.array(z.string().min(1)).optional(),
+    webhook: z.string().url().max(2048).optional(),
+    confirmWebhookTransmission: z.boolean().optional(),
+    webhookTimeoutMs: z.coerce
+      .number()
+      .finite()
+      .int()
+      .min(1_000)
+      .max(60_000)
+      .default(DEFAULT_WEBHOOK_CONFIG.timeoutMs),
   })
   .strict()
   .superRefine((options, context) => {
@@ -115,6 +133,39 @@ export const AnalyzeOptionsSchema = z
           message: 'Batch analysis does not support --redact-term',
           path: ['redactTerm'],
         });
+      }
+      if (!options.ai && options.webhook === undefined) return;
+      if (options.webhook !== undefined) {
+        try {
+          const url = new URL(options.webhook);
+          if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            context.addIssue({
+              code: 'custom',
+              message: '--webhook must be an HTTP(S) URL',
+              path: ['webhook'],
+            });
+          }
+          if (url.username !== '' || url.password !== '') {
+            context.addIssue({
+              code: 'custom',
+              message: '--webhook must not include credentials',
+              path: ['webhook'],
+            });
+          }
+        } catch {
+          context.addIssue({
+            code: 'custom',
+            message: '--webhook must be a URL',
+            path: ['webhook'],
+          });
+        }
+        if (!isLocalWebhookUrl(options.webhook) && !options.confirmWebhookTransmission) {
+          context.addIssue({
+            code: 'custom',
+            message: '--confirm-webhook-transmission is required for non-local webhook URLs',
+            path: ['confirmWebhookTransmission'],
+          });
+        }
       }
       return;
     }
@@ -261,6 +312,34 @@ export const AnalyzeOptionsSchema = z
         message: 'Hosted and custom transmission requires --confirm-transmission',
         path: ['confirmTransmission'],
       });
+    }
+    if (options.webhook !== undefined) {
+      try {
+        const url = new URL(options.webhook);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+          context.addIssue({
+            code: 'custom',
+            message: '--webhook must be an HTTP(S) URL',
+            path: ['webhook'],
+          });
+        }
+        if (url.username !== '' || url.password !== '') {
+          context.addIssue({
+            code: 'custom',
+            message: '--webhook must not include credentials',
+            path: ['webhook'],
+          });
+        }
+      } catch {
+        context.addIssue({ code: 'custom', message: '--webhook must be a URL', path: ['webhook'] });
+      }
+      if (!isLocalWebhookUrl(options.webhook) && !options.confirmWebhookTransmission) {
+        context.addIssue({
+          code: 'custom',
+          message: '--confirm-webhook-transmission is required for non-local webhook URLs',
+          path: ['confirmWebhookTransmission'],
+        });
+      }
     }
   });
 

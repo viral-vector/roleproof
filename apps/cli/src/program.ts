@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { Command, CommanderError } from 'commander';
 
 import { registerAnalyzeCommand } from './commands/analyze.js';
+import { registerMcpCommand } from './commands/mcp.js';
 import { registerProviderCommands } from './commands/providers.js';
 import { registerServeCommand } from './commands/serve.js';
 import { registerStorageCommands } from './commands/storage.js';
@@ -50,6 +51,7 @@ export function createProgram(
     });
 
   registerAnalyzeCommand(program, output, state, stdin);
+  registerMcpCommand(program, output, state, stdin);
   registerProviderCommands(program, output, state);
   registerServeCommand(program, output);
   registerStorageCommands(program, output);

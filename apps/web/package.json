@@ -1,6 +1,6 @@
 {
   "name": "@roleproof/web",
-  "version": "0.5.0",
+  "version": "0.6.1",
   "private": false,
   "description": "Local RoleProof web server and UI",
   "license": "MIT",
@@ -38,7 +38,7 @@
     "@roleproof/reporters": "workspace:*",
     "@roleproof/shared": "workspace:*",
     "@roleproof/storage": "workspace:*",
-    "fastify": "5.6.2",
+    "fastify": "5.12.0",
     "pinia": "3.0.4",
     "vue": "3.5.26",
     "vue-router": "4.6.4"

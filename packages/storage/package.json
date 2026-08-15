@@ -1,6 +1,6 @@
 {
   "name": "@roleproof/storage",
-  "version": "0.5.0",
+  "version": "0.6.1",
   "private": false,
   "description": "RoleProof local SQLite storage foundation",
   "license": "MIT",

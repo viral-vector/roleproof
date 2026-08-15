@@ -462,7 +462,7 @@ describe('local AI analyze API', () => {
         model: 'phi4-mini:latest',
         destination: 'local',
         baseUrl: 'http://localhost:11434/v1',
-        structuredOutputMode: 'json-schema',
+        structuredOutputMode: 'json-object',
       });
       expect(calls).toEqual([
         'analyze-requirements',
@@ -503,7 +503,7 @@ describe('local AI analyze API', () => {
         model: 'phi4-mini:latest',
         destination: 'local',
         baseUrl: 'http://localhost:11434/v1',
-        structuredOutputMode: 'json-schema',
+        structuredOutputMode: 'json-object',
       });
       expect(calls).toEqual([
         'analyze-requirements',
@@ -574,11 +574,18 @@ describe('local AI analyze API', () => {
 
   it('falls back to the deterministic envelope and records a provider failure', async () => {
     const calls: string[] = [];
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { app, database, repositories } = await appWithAIProvider((config) => ({
       ...successfulProvider(config, calls),
       analyzeRequirements() {
         calls.push('analyze-requirements');
-        return Promise.reject(new ProviderError('timeout', 'analyze-requirements'));
+        return Promise.reject(
+          new ProviderError(
+            'unavailable',
+            'analyze-requirements',
+            'model does not support response_format json_schema',
+          ),
+        );
       },
     }));
 
@@ -597,8 +604,12 @@ describe('local AI analyze API', () => {
       expect(calls).toEqual(['analyze-requirements']);
       expect(callsStored).toHaveLength(1);
       expect(callsStored[0]?.status).toBe('failed');
-      expect(callsStored[0]?.errorCode).toBe('timeout');
+      expect(callsStored[0]?.errorCode).toBe('unavailable');
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[roleproof] provider enhancement failed (unavailable) during analyze-requirements: model does not support response_format json_schema.',
+      );
     } finally {
+      errorSpy.mockRestore();
       await closeApp(app, database);
     }
   });
@@ -979,7 +990,7 @@ describe('local settings API', () => {
         model: 'phi4-mini:latest',
         destination: 'local',
         baseUrl: 'http://localhost:11434/v1',
-        structuredOutputMode: 'json-schema',
+        structuredOutputMode: 'json-object',
       });
       expect(body.databasePath).toBe(':memory:');
     } finally {
@@ -1100,7 +1111,7 @@ describe('local settings API', () => {
         model: 'phi4-mini:latest',
         destination: 'local',
         baseUrl: 'http://localhost:11434/v1',
-        structuredOutputMode: 'json-schema',
+        structuredOutputMode: 'json-object',
       });
       const fetchBody = LocalSettingsResponseSchema.parse(JSON.parse(fetch.body));
       expect(fetchBody.settings).toEqual({
@@ -1108,7 +1119,7 @@ describe('local settings API', () => {
         model: 'phi4-mini:latest',
         destination: 'local',
         baseUrl: 'http://localhost:11434/v1',
-        structuredOutputMode: 'json-schema',
+        structuredOutputMode: 'json-object',
       });
     } finally {
       await closeApp(app, database);
@@ -1140,7 +1151,7 @@ describe('local settings API', () => {
         model: 'phi4-mini:latest',
         destination: 'local',
         baseUrl: 'http://localhost:11434/v1',
-        structuredOutputMode: 'json-schema',
+        structuredOutputMode: 'json-object',
       });
     } finally {
       await closeApp(app, database);

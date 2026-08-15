@@ -49,6 +49,7 @@ export interface SanitizedProviderError {
   readonly code: ProviderErrorCode;
   readonly operation: ProviderOperation;
   readonly message: string;
+  readonly detail?: string;
 }
 
 export interface EnhancementFallbackResult {

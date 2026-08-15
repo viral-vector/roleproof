@@ -37,6 +37,9 @@ provider-transmission confirmation checkbox before it sends redacted analysis in
 - JSON or Markdown is written only to requested stdout or report destinations.
 - Full resume and job text is not written to application logs or embedded in diagnostics.
 - Explicit `--out` report files are exports and are not analysis history.
+- Explicit `--webhook` sends the JSON analysis or batch envelope only to the user-supplied endpoint.
+  Non-local webhook URLs require `--confirm-webhook-transmission`, delivery diagnostics are written
+  to stderr, and webhook response bodies are never logged.
 
 ## Local Database
 

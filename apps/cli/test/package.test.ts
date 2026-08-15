@@ -42,6 +42,7 @@ describe('@roleproof/cli package export', () => {
       ['apps/web/package.json', 'apps/web'],
       ['packages/core/package.json', 'packages/core'],
       ['packages/parsers/package.json', 'packages/parsers'],
+      ['packages/plugin-api/package.json', 'packages/plugin-api'],
       ['packages/providers/package.json', 'packages/providers'],
       ['packages/reporters/package.json', 'packages/reporters'],
       ['packages/shared/package.json', 'packages/shared'],
@@ -59,7 +60,7 @@ describe('@roleproof/cli package export', () => {
         version?: string;
       };
       expect(packageJson.scripts?.prepack, packagePath).toBe('pnpm --dir ../.. build');
-      expect(packageJson.version, packagePath).toBe('0.5.0');
+      expect(packageJson.version, packagePath).toBe('0.6.1');
       expect(packageJson.private, packagePath).toBe(false);
       expect(packageJson.publishConfig, packagePath).toEqual({ access: 'public' });
       expect(packageJson.engines?.node, packagePath).toBe('>=22.0.0 <25');
@@ -72,12 +73,12 @@ describe('@roleproof/cli package export', () => {
     }
   });
 
-  it('documents the v0.5.0 release without overstating product outcomes', () => {
+  it('documents the v0.6.1 release without overstating product outcomes', () => {
     const changelog = readFileSync('CHANGELOG.md', 'utf8');
 
-    expect(changelog).toContain('## 0.5.0 - 2026-08-02');
-    expect(changelog).toContain('job URL source analysis');
-    expect(changelog).toContain('source metadata');
+    expect(changelog).toContain('## 0.6.1 - 2026-08-14');
+    expect(changelog).toContain('remaining local automation surfaces');
+    expect(changelog).toContain('@roleproof/plugin-api');
     expect(changelog).toContain('deterministic');
     expect(changelog).not.toMatch(/interview probability|hiring probability/iu);
   });

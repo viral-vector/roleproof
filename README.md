@@ -6,12 +6,12 @@ inventing experience or presenting a fit score as an interview or hiring probabi
 
 ## Project Status
 
-Phase 5 provides a local Fastify server behind `roleproof serve`, a browser workflow for local
-analysis, and bounded job URL source analysis. RoleProof accepts plaintext, PDF, or DOCX resumes and
-pasted or URL-backed job descriptions, stores profiles and career evidence, retains analysis history,
-supports full-text search, and renders schema-versioned JSON or Markdown. Optional
-evidence-constrained AI enhancement is available in the CLI and browser only after explicit provider
-selection and consent.
+Phase 6 completes RoleProof's local automation surface on top of the deterministic CLI, local
+Fastify server, browser workflow, SQLite history, optional providers, and bounded job URL source
+analysis. RoleProof accepts plaintext, PDF, or DOCX resumes and pasted, piped, batched, or
+URL-backed job descriptions, stores profiles and career evidence, retains analysis history, supports
+full-text search, and renders schema-versioned JSON or Markdown. Optional evidence-constrained AI
+enhancement is available in the CLI and browser only after explicit provider selection and consent.
 
 The browser workflow supports pasted text or TXT/PDF/DOCX résumé uploads with deterministic
 analysis, AI-enhanced analysis with deterministic fallback, provider/redaction settings, stored
@@ -114,13 +114,45 @@ failures; an all-completed batch exits `0`. Batch mode is deterministic-only, st
 default (honoring `--no-store`), and with `--out` writes `roleproof-batch.json`,
 `roleproof-batch.md`, and per-pair `roleproof-batch-pair-<n>.json`/`.md` reports.
 
+## Automation
+
+`roleproof serve` exposes stable local automation endpoints in addition to the browser routes:
+
+```powershell
+Invoke-RestMethod http://localhost:4173/api/automation
+Invoke-RestMethod http://localhost:4173/api/automation/analyze `
+  -Method Post `
+  -ContentType 'application/json' `
+  -Body '{"schemaVersion":"1.0","resumeText":"Fictional TypeScript experience","jobText":"Required: TypeScript"}'
+```
+
+`POST /api/automation/analyze` is deterministic-only, does not persist, and returns the canonical
+`1.0` analysis envelope. The CLI also supports explicit webhook delivery of the JSON analysis or
+batch envelope:
+
+```powershell
+pnpm exec roleproof analyze `
+  --resume fixtures/phase-1/strong-match/resume.txt `
+  --job fixtures/phase-1/strong-match/job.txt `
+  --no-ai --no-store --format json --stdout `
+  --webhook https://automation.example.test/roleproof `
+  --confirm-webhook-transmission
+```
+
+Webhook delivery is never automatic. Non-local webhook URLs require
+`--confirm-webhook-transmission`, response bodies are not logged, and JSON stdout remains the
+requested analysis envelope. `roleproof mcp` provides a local stdio JSON-RPC MCP-compatible tool
+named `roleproof_analyze` for plaintext deterministic analysis. The public `@roleproof/plugin-api`
+package exposes `analyzeText` and `renderAnalysis` for local plugins, and the repository root
+`action.yml` defines a composite GitHub Action for deterministic `roleproof analyze` runs.
+
 ## Local Web Server
 
 ```powershell
 pnpm exec roleproof serve
 ```
 
-The Phase 5 server starts on `http://localhost:4173` by default and exposes a responsive local
+The local server starts on `http://localhost:4173` by default and exposes a responsive local
 Vue/Vite workspace with Vue Router, Pinia, a RoleProof proof-mark favicon, privacy-visible status
 copy, and no account, telemetry, or cloud connection requirement. The browser Analyze form streams
 `POST /api/analyze/stream`, which accepts schema-versioned résumé/job text and returns the same
@@ -211,6 +243,7 @@ Get-Content fixtures/phase-1/strong-match/job.txt -Raw |
 - `packages/reporters`: validated JSON and Markdown rendering
 - `packages/providers`: privacy-gated provider orchestration and OpenAI-compatible adapters
 - `packages/storage`: Kysely repositories and migrations backed by `better-sqlite3`
+- `packages/plugin-api`: deterministic local plugin API for automation integrations
 - `docs`: architecture and engineering documentation
 
 Shared schemas are defined before handlers or analysis behavior. Business logic must remain
