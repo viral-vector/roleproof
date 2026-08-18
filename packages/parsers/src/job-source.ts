@@ -42,12 +42,16 @@ const ATS_HOSTS = [
   { provider: 'smartrecruiters', hosts: ['smartrecruiters.com'] },
 ] as const;
 
-function hostnameFor(url: string): string {
+function parsedUrlFor(url: string): URL {
   try {
-    return new URL(url).hostname.toLowerCase();
+    return new URL(url);
   } catch {
     throw new ParserError('url-invalid', `Job URL is invalid: ${url}`);
   }
+}
+
+function hostnameFor(url: URL): string {
+  return url.hostname.toLowerCase();
 }
 
 function matchesHost(hostname: string, hosts: readonly string[]): boolean {
@@ -67,6 +71,21 @@ function isAggregator(hostname: string): boolean {
 
 function isRecruiter(hostname: string): boolean {
   return matchesHost(hostname, RECRUITER_HOSTS);
+}
+
+function isLikelyEmployerCareersUrl(hostname: string, pathname: string): boolean {
+  const normalizedPath = pathname.toLocaleLowerCase('en-US');
+  return (
+    matchesHost(hostname, ['careers']) ||
+    /^careers\./u.test(hostname) ||
+    /\/(?:careers?|jobs?|openings|positions|opportunities)(?:\/|$)/iu.test(normalizedPath)
+  );
+}
+
+function hasEmployerPostingSignals(text: string): boolean {
+  return /\b(?:about the role|job description|required qualifications|requirements|responsibilities|what you(?:'|’)ll bring|apply for this job)\b/iu.test(
+    text,
+  );
 }
 
 function detectRemovedSignals(text: string): boolean {
@@ -90,10 +109,15 @@ export function classifyJobSource(
   statusCode: number | undefined,
 ): JobRetrievalMetadata {
   const sourceUrl = finalUrl ?? url;
-  const hostname = hostnameFor(sourceUrl);
+  const parsedSourceUrl = parsedUrlFor(sourceUrl);
+  const hostname = hostnameFor(parsedSourceUrl);
   const atsProvider = detectAtsProvider(hostname);
   const removedOrUnavailable =
     statusCode === 404 || statusCode === 410 || detectRemovedSignals(contentText);
+  const likelyEmployerPage =
+    !removedOrUnavailable &&
+    isLikelyEmployerCareersUrl(hostname, parsedSourceUrl.pathname) &&
+    hasEmployerPostingSignals(contentText);
   const sourceClassification: JobSourceClassification = removedOrUnavailable
     ? 'removed-unavailable'
     : atsProvider !== 'unknown'
@@ -102,7 +126,9 @@ export function classifyJobSource(
         ? 'aggregator'
         : isRecruiter(hostname)
           ? 'recruiter'
-          : 'unknown';
+          : likelyEmployerPage
+            ? 'official-employer'
+            : 'unknown';
 
   const warnings = [];
   if (removedOrUnavailable) {
@@ -131,9 +157,11 @@ export function classifyJobSource(
       ? 0.95
       : sourceClassification === 'official-ats'
         ? 0.95
-        : sourceClassification === 'unknown'
-          ? 0.5
-          : 0.6,
+        : sourceClassification === 'official-employer'
+          ? 0.75
+          : sourceClassification === 'unknown'
+            ? 0.5
+            : 0.6,
     warnings,
   });
 }

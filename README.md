@@ -244,6 +244,7 @@ Get-Content fixtures/phase-1/strong-match/job.txt -Raw |
 - `packages/providers`: privacy-gated provider orchestration and OpenAI-compatible adapters
 - `packages/storage`: Kysely repositories and migrations backed by `better-sqlite3`
 - `packages/plugin-api`: deterministic local plugin API for automation integrations
+- `examples`: fictional local CLI and automation examples
 - `docs`: architecture and engineering documentation
 
 Shared schemas are defined before handlers or analysis behavior. Business logic must remain
@@ -277,7 +278,8 @@ for transmission details.
 - Profile-wide evidence is used only with an explicit `--profile`; inferred evidence always
   requires confirmation and contributes zero points.
 - Local persistence uses Kysely with `better-sqlite3` at `~/.roleproof/roleproof.db` by default.
-- Read-only profile analysis rejects a database with live uncheckpointed WAL content.
+- Read-only profile analysis opens the existing database query-only and can include committed WAL
+  content without writing analysis records.
 - `data purge` requires `--yes` and removes the database plus its WAL and SHM sidecars.
 - Scores describe evidence-based fit only and do not predict employer outcomes.
 - Analysis is bounded to 500 semantic requirements and 100 evidence references per match; exceeding

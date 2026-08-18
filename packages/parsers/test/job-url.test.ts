@@ -40,6 +40,30 @@ describe('parseJobUrlWithMetadata', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('classifies a structured employer careers page without treating every unknown host as official', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      makeResponse(`
+        <html><body>
+          <main>
+            <h1>Fictional Platform Engineer</h1>
+            <h2>Required Qualifications</h2>
+            <p>Experience building TypeScript services.</p>
+          </main>
+        </body></html>
+      `),
+    );
+
+    const result = await parseJobUrlWithMetadata(
+      'https://careers.fictional.example/jobs/platform-engineer',
+      {},
+      fetchImpl,
+    );
+
+    expect(result.source.sourceClassification).toBe('official-employer');
+    expect(result.source.atsProvider).toBe('unknown');
+    expect(result.source.removedOrUnavailable).toBe(false);
+  });
+
   it('extracts only the Greenhouse job content and excludes its application form', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       makeResponse(`

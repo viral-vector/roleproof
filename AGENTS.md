@@ -101,7 +101,7 @@ Rules:
 
 - Business logic belongs in the core or domain packages.
 - CLI commands must orchestrate, not implement scoring logic.
-- React components must present data, not implement matching or truth rules.
+- Vue/UI components must present data, not implement matching or truth rules.
 - HTTP handlers must validate and delegate, not duplicate core behavior.
 - Reporters render `AnalysisResult`; they do not recalculate it.
 - Storage adapters persist domain data; they do not decide recommendations.
@@ -321,7 +321,7 @@ Privacy is a hard constraint.
 The CLI is a first-class product interface.
 
 - Commands must support non-interactive execution when required flags are supplied.
-- `--json` mode must be stable and decoration-free.
+- JSON output mode must be stable and decoration-free.
 - stdout is for requested output.
 - stderr is for diagnostics and errors.
 - Preserve documented exit codes.
@@ -344,7 +344,7 @@ The CLI is a first-class product interface.
 # 14. UI Rules
 
 - The UI must use the same core engine as the CLI.
-- Do not duplicate analysis behavior in React.
+- Do not duplicate analysis behavior in Vue/UI components.
 - No account is required for the local UI.
 - No cloud connection is required for deterministic mode.
 - Clearly label:
@@ -477,7 +477,7 @@ Rules:
   - stdout,
   - stderr,
   - exit code,
-  - JSON purity under `--json`,
+- JSON purity under JSON output mode,
   - and cross-platform path behavior where applicable.
 - Every AI-provider change must use mocked provider responses and test:
   - valid structured output,

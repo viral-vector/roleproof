@@ -656,10 +656,10 @@ export function registerAnalyzeCommand(
 ): void {
   program
     .command('analyze')
-    .description('Analyze a local resume against a local plaintext job description')
+    .description('Analyze a resume against a job description or job URL')
     .option('--resume <path>', 'Path to a plaintext, PDF, or DOCX resume')
     .option('--stdin-resume', 'Read the resume as plaintext from stdin')
-    .option('--job <path>', 'Path to a plaintext job description')
+    .option('--job <path-or-url>', 'Path to a plaintext job description or HTTP(S) job URL')
     .option('--stdin-job', 'Read the job description as plaintext from stdin')
     .option('--format <format>', 'Output format: markdown, json, or both', 'markdown')
     .option('--out <directory>', 'Write report files to this directory')

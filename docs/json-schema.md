@@ -153,10 +153,40 @@ URL-backed analyses include `analysis.metadata.jobSource` when retrieval succeed
 }
 ```
 
-`sourceClassification` is one of `official-company`, `official-ats`, `aggregator`, `unknown`, or
-`unavailable`. `atsProvider` is a detected ATS value such as `greenhouse`, `lever`, `ashby`,
-`workday`, `icims`, `smartrecruiters`, `bamboohr`, `workable`, `oracle`, `successfactors`, or
-`unknown`. Removed or unavailable pages are rejected before analysis.
+`sourceClassification` is one of `official-employer`, `official-ats`, `recruiter`, `aggregator`,
+`unknown`, or `removed-unavailable`. `atsProvider` is a detected ATS value such as `greenhouse`,
+`lever`, `workday`, `ashby`, `icims`, `paylocity`, `rippling`, `jazzhr`, `smartrecruiters`, or
+`unknown`. Removed or unavailable pages are rejected before analysis. Employer-owned pages are
+classified conservatively: generic hosts stay `unknown` unless URL structure and posting content both
+look like an employer careers page.
+
+`POST /api/analyze/stream` returns newline-delimited JSON events validated by
+`LocalAnalyzeStreamEventSchema`:
+
+```json
+{
+  "kind": "progress",
+  "stage": "baseline-analysis",
+  "completed": 2,
+  "total": 4,
+  "message": "Running deterministic analysis."
+}
+```
+
+Progress `stage` values are `parsing-resume`, `parsing-job`, `baseline-analysis`,
+`provider-requirements`, `provider-evidence`, `provider-suggestions`, and `complete`. The terminal
+success event is:
+
+```json
+{ "kind": "result", "response": { "schemaVersion": "1.0", "analysis": { "schemaVersion": "1.0" } } }
+```
+
+Provider success may return an enhanced `2.0` response in the same `response` field. A terminal
+failure event is content-free except for a short message:
+
+```json
+{ "kind": "error", "error": "Analysis failed." }
+```
 
 `warnings` entries use stable codes. Extraction-quality codes include `non-html-content`,
 `low-text-content`, `semantic-extraction` (requirements came from a generic `main` or `article`

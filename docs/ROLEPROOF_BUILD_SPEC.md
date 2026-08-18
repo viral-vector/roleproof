@@ -186,7 +186,6 @@ Future hosted deployment may add PostgreSQL and queues, but only in a later phas
 roleproof/
 ├── apps/
 │   ├── cli/
-│   ├── server/
 │   └── web/
 ├── packages/
 │   ├── core/
@@ -194,14 +193,16 @@ roleproof/
 │   ├── providers/
 │   ├── storage/
 │   ├── reporters/
+│   ├── plugin-api/
+│   ├── test-utils/
 │   └── shared/
 ├── data/
 │   ├── skill-aliases.json
-│   ├── skill-relationships.json
-│   └── ats-domains.json
+│   └── skill-relationships.json
 ├── examples/
 ├── fixtures/
 ├── docs/
+├── .github/ISSUE_TEMPLATE/
 ├── .github/workflows/
 ├── Dockerfile
 ├── LICENSE
@@ -479,7 +480,7 @@ roleproof analyze \
 `--stdin-resume` and `--stdin-job` read plaintext stdin instead of `--resume`/`--job`; they cannot
 be combined with their file counterparts or with each other.
 
-## Planned commands
+## Commands
 
 ```bash
 roleproof --version
@@ -488,13 +489,17 @@ roleproof analyze
 roleproof profile create
 roleproof profile show
 roleproof profile evidence add
+roleproof profile evidence edit
+roleproof profile evidence remove
 roleproof report show
 roleproof history
 roleproof search
 roleproof providers list
+roleproof providers models
 roleproof providers test
 roleproof data purge
 roleproof serve
+roleproof mcp
 ```
 
 ## Automation requirements
@@ -502,7 +507,7 @@ roleproof serve
 - Support non-interactive execution
 - Use stdout for normal output
 - Use stderr for errors
-- In `--json` mode, stdout must contain JSON only
+- In JSON output mode (`--format json --stdout`), stdout must contain JSON only
 - Return documented exit codes
 
 ## Exit codes
@@ -1006,7 +1011,8 @@ cat job.txt |
   roleproof analyze \
   --resume resume.pdf \
   --stdin-job \
-  --json |
+  --format json \
+  --stdout |
   jq '.analysis.recommendation'
 ```
 
@@ -1170,7 +1176,7 @@ Do not wait for the UI before publishing the CLI.
 
 1. Work on one phase at a time.
 2. Do not silently add later-phase features.
-3. Keep business logic outside CLI and React components.
+3. Keep business logic outside CLI and Vue components.
 4. Define Zod schemas before handlers.
 5. Write tests before declaring a phase complete.
 6. Use fictional test data only.

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0",
+  "pairs": [
+    {
+      "resume": "../fixtures/phase-1/strong-match/resume.txt",
+      "job": "../fixtures/phase-1/strong-match/job.txt"
+    },
+    {
+      "resume": "../fixtures/phase-1/stretch-match/resume.txt",
+      "job": "../fixtures/phase-1/stretch-match/job.txt"
+    }
+  ]
+}
